@@ -205,3 +205,40 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ─── Mal-Intel-Pipeline specific ───────────────────────────────
+
+# Secrets / config with real values
+config/*.env
+config/secrets.yaml
+config/secrets.json
+.env
+
+# Malware samples - NEVER commit these
+samples/quarantine/*
+samples/analyzed/*
+!samples/quarantine/.gitkeep
+!samples/analyzed/.gitkeep
+
+# Generated output
+output/reports/*
+output/rules/yara/*
+output/rules/sigma/*
+output/logs/*
+!output/reports/.gitkeep
+!output/rules/yara/.gitkeep
+!output/rules/sigma/.gitkeep
+!output/logs/.gitkeep
+
+# Checkpoint state
+checkpoints/*.json
+checkpoints/*.pkl
+!checkpoints/.gitkeep
+
+# API response caches
+*.cache
+*.pickle
+
+# OS
+Thumbs.db
+Desktop.ini
