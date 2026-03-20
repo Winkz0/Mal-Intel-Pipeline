@@ -120,9 +120,9 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 | M1 | Repo \& GitHub Setup | ✅ Complete |
 
-| M2 | VM Environment | 🔄 In Progress |
+| M2 | VM Environment | ✅ Complete |
 
-| M3 | API Accounts \& Keys | ⬜ Not Started |
+| M3 | API Accounts \& Keys | 🔄 In Progress |
 
 | M4 | Intel Feed Ingestion | ⬜ Not Started |
 
