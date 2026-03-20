@@ -118,9 +118,9 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 |---|---|---|
 
-| M1 | Repo \& GitHub Setup | 🔄 In Progress |
+| M1 | Repo \& GitHub Setup | ✅ Complete |
 
-| M2 | VM Environment | ⬜ Not Started |
+| M2 | VM Environment | 🔄 In Progress |
 
 | M3 | API Accounts \& Keys | ⬜ Not Started |
 
