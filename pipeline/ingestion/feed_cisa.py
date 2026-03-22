@@ -1,0 +1,68 @@
+"""
+feed_cisa.py
+Fetches and parses the CISA Known Exploited Vulnerabilities (KEV) feed.
+No authentication required - Public endpoint
+"""
+
+import requests
+import logging
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
+
+CISA_KEV_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+
+
+def fetch_cisa_kev() -> list[dict]:
+    """
+    Fetches the CISA KEV feed and returns a list of normalized IOC dicts.
+    """
+    logger.info("Fetching CISA KEV feed...")
+    
+    try:
+        response = requests.get(CISA_KEV_URL, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Failed to fetch CISA KEV feed: {e}")
+        return []
+    data = response.json()
+    vulnerabilities = data.get("vulnerabilities", [])
+    logger.info(f"CISA KEV: retrieved {len(vulnerabilities)} entries")
+    
+    normalized = []
+    for vuln in vulnerabilities:
+        normalized.append({
+            "source": "cisa_kev",
+            "ioc_type": "cve",
+            "value": vuln.get("cveID", ""),
+            "context": {
+                "vendor": vuln.get("vendorProject", ""),
+                "product": vuln.get("product", ""),
+                "vulnerability_name": vuln.get("vulnerabilityName", ""),
+                "description": vuln.get("shortDescription", ""),
+                "date_added": vuln.get("dateAdded", ""),
+                "due_date": vuln.get("dueDate", ""),
+                "known_ransomware": vuln.get("knownRansomewareCampaignUSe", "Unknown"),
+                "notes": vuln.get("notes", ""),
+                "malware_family": None,
+                "tags": [],
+                "ttp_refs": [],
+                "campaign": None,
+                "source_pulse_id": None
+            },
+            "approved_for_analysis": False,
+            "ingested_at": datetime.now(timezone.utc).isoformat()
+        })
+    return normalized
+    
+    
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    results = fetch_cisa_kev()
+    print(f"\nTotal CISA KEV entries: {len(results)}")
+    if results:
+        print("\nSample entry:")
+        import json
+        print(json.dumps(results[0], indent=2))
+        
+           
