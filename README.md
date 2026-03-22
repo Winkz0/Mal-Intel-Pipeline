@@ -122,9 +122,9 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 | M2 | VM Environment | ✅ Complete |
 
-| M3 | API Accounts \& Keys | 🔄 In Progress |
+| M3 | API Accounts \& Keys | ✅ Complete |
 
-| M4 | Intel Feed Ingestion | ⬜ Not Started |
+| M4 | Intel Feed Ingestion | 🔄 In Progress |
 
 | M5 | Sample Acquisition | ⬜ Not Started |
 
