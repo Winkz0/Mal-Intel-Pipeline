@@ -1,0 +1,125 @@
+"""
+feed_otx.py
+Fetches and parses AlienVault OTX threat intel pulses.
+Requires OTX_API_KEY in config/secrets.env
+Uses direct REST API instead of SDK for reliability and speed.
+"""
+
+import logging
+import os
+import requests
+from datetime import datetime, timezone
+from dotenv import load_dotenv
+
+load_dotenv("config/secrets.env")
+
+logger = logging.getLogger(__name__)
+
+OTX_API_KEY = os.getenv("OTX_API_KEY")
+OTX_BASE_URL = "https://otx.alienvault.com/api/v1"
+OTX_PULSE_LIMIT = 10
+
+
+def fetch_otx_pulses() -> list[dict]:
+    """
+    Fetches recent OTX pulses via REST and returns normalized IOC dicts.
+    """
+    if not OTX_API_KEY:
+        logger.error("OTX_API_KEY not set in config/secrets.env")
+        return []
+
+    headers = {"X-OTX-API-KEY": OTX_API_KEY}
+    params = {"limit": OTX_PULSE_LIMIT}
+
+    logger.info(f"Fetching {OTX_PULSE_LIMIT} recent OTX pulses...")
+
+    try:
+        response = requests.get(
+            f"{OTX_BASE_URL}/pulses/subscribed",
+            headers=headers,
+            params=params,
+            timeout=30
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Failed to fetch OTX pulses: {e}")
+        return []
+
+    data = response.json()
+    pulses = data.get("results", [])
+    logger.info(f"OTX: retrieved {len(pulses)} pulses")
+
+    normalized = []
+    for pulse in pulses:
+        pulse_id = pulse.get("id", "")
+        pulse_name = pulse.get("name", "")
+        tags = pulse.get("tags", [])
+        malware_families = pulse.get("malware_families", [])
+        attack_ids = pulse.get("attack_ids", [])
+        created = pulse.get("created", "")
+
+        malware_family = malware_families[0] if malware_families else None
+        if isinstance(malware_family, dict):
+            malware_family = malware_family.get("display_name")
+        ttp_refs = [a.get("id") for a in attack_ids if a.get("id")]
+
+        for indicator in pulse.get("indicators", []):
+            ioc_type = map_otx_indicator_type(indicator.get("type", ""))
+            if not ioc_type:
+                continue
+
+            normalized.append({
+                "source": "otx",
+                "ioc_type": ioc_type,
+                "value": indicator.get("indicator", ""),
+                "context": {
+                    "vendor": None,
+                    "product": None,
+                    "vulnerability_name": None,
+                    "description": indicator.get("description", "") or pulse.get("description", ""),
+                    "date_added": created,
+                    "due_date": None,
+                    "known_ransomware": None,
+                    "notes": pulse_name,
+                    "malware_family": malware_family,
+                    "tags": tags,
+                    "ttp_refs": ttp_refs,
+                    "campaign": pulse_name,
+                    "first_seen": created,
+                    "source_pulse_id": pulse_id
+                },
+                "approved_for_analysis": False,
+                "ingested_at": datetime.now(timezone.utc).isoformat()
+            })
+
+    logger.info(f"OTX: normalized {len(normalized)} indicators")
+    return normalized
+
+
+def map_otx_indicator_type(otx_type: str) -> str | None:
+    """
+    Maps OTX indicator types to our normalized ioc_type values.
+    """
+    mapping = {
+        "IPv4": "ip",
+        "IPv6": "ip",
+        "domain": "domain",
+        "hostname": "domain",
+        "URL": "url",
+        "FileHash-MD5": "hash",
+        "FileHash-SHA1": "hash",
+        "FileHash-SHA256": "hash",
+        "email": "email",
+        "CVE": "cve",
+    }
+    return mapping.get(otx_type, None)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    results = fetch_otx_pulses()
+    print(f"\nTotal OTX indicators: {len(results)}")
+    if results:
+        print("\nSample entry:")
+        import json
+        print(json.dumps(results[0], indent=2))
