@@ -124,9 +124,9 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 | M3 | API Accounts \& Keys | ✅ Complete |
 
-| M4 | Intel Feed Ingestion | 🔄 In Progress |
+| M4 | Intel Feed Ingestion | ✅ Complete |
 
-| M5 | Sample Acquisition | ⬜ Not Started |
+| M5 | Sample Acquisition | 🔄 In Progress |
 
 | M6 | Static Analysis Engine | ⬜ Not Started |
 
