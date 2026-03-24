@@ -97,6 +97,35 @@ def download_from_bazaar(sha256_hash: str, api_key: str) -> bytes | None:
         return None
 
 
+def download_from_virustotal(sha256_hash: str, api_key: str) -> bytes | None:
+    """
+    Download a sample from VirusTotal by SHA256.
+    Requires VT account with download privileges (free tier supports this).
+    Returns raw file bytes or None on failure.
+    """
+    url = f"https://www.virustotal.com/api/v3/files/{sha256_hash}/download"
+    headers = {"x-apikey": api_key}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=60, stream=True)
+        
+        if resp.status_code == 401:
+            logger.error("VT API key invalid or unauthorized")
+            return None
+        elif resp.status_code == 404:
+            logger.warning(f"Sample not found on VT: {sha256_hash[:16]}...")
+            return None
+        elif resp.status_code == 429:
+            logger.warning("VT rate limit hit")
+            return None
+            
+        resp.raise_for_status()
+        return resp.content
+
+    except requests.RequestException as e:
+        logger.error(f"VT download failed for {sha256_hash}: {e}")
+        return None
+
 def extract_sample_from_zip(zip_bytes: bytes, sha256_hash: str) -> bytes | None:
     """
     Extract the malware binary from the password-protected ZIP.
@@ -216,17 +245,27 @@ def acquire_approved_samples(api_key: str, checkpoint_file: str = None) -> list[
 
         logger.info(f"Acquiring: {sha256[:16]}... ({ioc.get('context', {}).get('malware_family', 'unknown')})")
 
-        # Download
+        # Download - try Bazaar first, fall back to VT
+        vt_key = os.getenv("VIRUSTOTAL_API_KEY")
         zip_bytes = download_from_bazaar(sha256, api_key)
-        if not zip_bytes:
-            acquisition_log.append({"sha256": sha256, "status": "download_failed"})
-            continue
-
-        # Extract
-        sample_bytes = extract_sample_from_zip(zip_bytes, sha256)
-        if not sample_bytes:
-            acquisition_log.append({"sha256": sha256, "status": "extraction_failed"})
-            continue
+        
+        if zip_bytes:
+            # Extract from Bazaar ZIP
+            sample_bytes = extract_sample_from_zip(zip_bytes, sha256)
+            if not sample_bytes:
+                acquisition_log.append({"sha256": sha256, "status": "extraction_failed"})
+                continue
+        else:
+            # Bazaar failed - try VT direct download
+            logger.info(f"Bazaar failed, trying VirusTotal for {sha256[:16]}...")
+            if not vt_key:
+                logger.error("VIRUSTOTAL_API_KEY not set, cannot fall back to VT")
+                acquisition_log.append({"sha256": sha256, "status": "download_failed"})
+                continue
+            sample_bytes = download_from_virustotal(sha256, vt_key)
+            if not sample_bytes:
+                acquisition_log.append({"sha256": sha256, "status": "download_failed"})
+                continue
 
         # Verify
         if not verify_hash(sample_bytes, sha256):

@@ -1,0 +1,75 @@
+{
+  "checkpoint": 1,
+  "timestamp": "2026-03-24T12:28:26.021333+00:00",
+  "total_iocs": 2,
+  "approved_for_analysis": 1,
+  "iocs": [
+    {
+      "source": "malwarebazaar",
+      "ioc_type": "hash",
+      "value": "fb967e4daa07ff3777fd4495133bef6544676a315409990f68057506d706c1e4",
+      "context": {
+        "malware_family": "Mirai",
+        "tags": [
+          "botnet",
+          "ddos"
+        ],
+        "ttp_refs": [],
+        "campaign": null,
+        "first_seen": "2026-03-23",
+        "description": "apk sample",
+        "date_added": "",
+        "due_date": null,
+        "known_ransomware": null,
+        "notes": "File: app0.apk | Size: 5401317 bytes",
+        "vendor": null,
+        "product": null,
+        "vulnerability_name": null,
+        "source_pulse_id": null
+      },
+      "file_info": {
+        "type": "apk",
+        "size": 5401317,
+        "name": "app0.apk"
+      },
+      "hashes": {
+        "sha256": "fb967e4daa07ff3777fd4495133bef6544676a315409990f68057506d706c1e4"
+      },
+      "sources": [
+        "malwarebazaar"
+      ],
+      "approved_for_analysis": true,
+      "ingested_at": "2026-03-23T16:50:53+00:00"
+    },
+    {
+      "source": "otx",
+      "ioc_type": "ip",
+      "value": "192.168.1.100",
+      "context": {
+        "malware_family": null,
+        "tags": [
+          "c2"
+        ],
+        "ttp_refs": [
+          "T1071"
+        ],
+        "campaign": "Operation X",
+        "first_seen": "2026-03-20",
+        "description": "C2 server",
+        "date_added": "",
+        "due_date": null,
+        "known_ransomware": null,
+        "notes": "",
+        "vendor": null,
+        "product": null,
+        "vulnerability_name": null,
+        "source_pulse_id": "abc123"
+      },
+      "sources": [
+        "otx"
+      ],
+      "approved_for_analysis": false,
+      "ingested_at": "2026-03-23T16:50:53+00:00"
+    }
+  ]
+}
