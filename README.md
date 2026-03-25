@@ -126,9 +126,9 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 | M4 | Intel Feed Ingestion | ✅ Complete |
 
-| M5 | Sample Acquisition | 🔄 In Progress |
+| M5 | Sample Acquisition | ✅ Complete |
 
-| M6 | Static Analysis Engine | ⬜ Not Started |
+| M6 | Static Analysis Engine | 🔄 In Progress |
 
 | M7 | LLM Synthesis Layer | ⬜ Not Started |
 
@@ -210,7 +210,7 @@ mal-intel-pipeline/
 
 
 
-\*\*Current Milestone:\*\* M1 — Repo \& GitHub Setup
+\*\*Current Milestone:\*\* \ M6 \ Static Analysis Engine
 
-\*\*Last Updated:\*\* 2026-03-19
+\*\*Last Updated:\*\* 2026-03-25
 
