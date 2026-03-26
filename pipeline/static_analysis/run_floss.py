@@ -50,6 +50,7 @@ def run_floss(sample_path: Path, timeout: int = 300) -> dict:
         "floss",
         "-j",
         "-q",
+        "--only", "static",
         str(sample_path)
     ]
 
