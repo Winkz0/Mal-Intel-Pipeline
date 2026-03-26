@@ -48,8 +48,8 @@ def run_floss(sample_path: Path, timeout: int = 300) -> dict:
 
     cmd = [
         "floss",
-        "--json",
-        "--no-progress",
+        "-j",
+        "-q",
         str(sample_path)
     ]
 
