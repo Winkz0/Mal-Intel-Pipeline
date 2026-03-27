@@ -128,9 +128,9 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 | M5 | Sample Acquisition | ✅ Complete |
 
-| M6 | Static Analysis Engine | 🔄 In Progress |
+| M6 | Static Analysis Engine | ✅ Complete |
 
-| M7 | LLM Synthesis Layer | ⬜ Not Started |
+| M7 | LLM Synthesis Layer | 🔄 In Progress |
 
 | M8 | Report Generation | ⬜ Not Started |
 
@@ -210,7 +210,7 @@ mal-intel-pipeline/
 
 
 
-\*\*Current Milestone:\*\* \ M6 \ Static Analysis Engine
+\*\*Current Milestone:\*\* \ M7 \ LLM Synthesis Layer
 
-\*\*Last Updated:\*\* 2026-03-25
+\*\*Last Updated:\*\* 2026-03-27
 
