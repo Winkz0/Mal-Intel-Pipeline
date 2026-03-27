@@ -77,21 +77,29 @@ def run_diec(sample_path: Path, timeout: int = 60) -> dict:
 
         # Parse summary from detections
         for entry in detections:
-            det_type = entry.get("type", "").lower()
-            name = entry.get("name", "")
-            info = entry.get("info", "")
-            version = entry.get("version", "")
-            label = f"{name} {version}".strip() if version else name
+            # File type is at the entry level
+            file_type = entry.get("filetype", "")
+            if file_type and not result["summary"]["file_type"]:
+                result["summary"]["file_type"] = file_type
 
-            if det_type == "archive" or det_type == "format":
-                result["summary"]["file_type"] = label
-            elif det_type == "compiler":
-                result["summary"]["compiler"] = label
-            elif det_type == "packer" or det_type == "protector":
-                result["summary"]["packer"] = label
-                result["summary"]["is_packed"] = True
-            elif det_type == "linker":
-                result["summary"]["linker"] = label
+            # Detailed detections are nested under "values"
+            for val in entry.get("values", []):
+                det_type = val.get("type", "").lower()
+                name = val.get("name", "")
+                version = val.get("version", "")
+                info = val.get("info", "")
+                label = f"{name} {version}".strip() if version else name
+
+                if det_type in ("compiler", "language"):
+                    result["summary"]["compiler"] = label
+                elif det_type in ("packer", "protector"):
+                    result["summary"]["packer"] = label
+                    result["summary"]["is_packed"] = True
+                elif det_type == "linker":
+                    result["summary"]["linker"] = label
+                elif det_type == "package":
+                    # APK package name — store in compiler field as context
+                    result["summary"]["compiler"] = f"Package: {label}"
 
         # File type from top-level if present
         if not result["summary"]["file_type"]:
