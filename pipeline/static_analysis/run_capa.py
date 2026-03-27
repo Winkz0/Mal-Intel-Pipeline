@@ -45,6 +45,7 @@ def run_capa(sample_path: Path, timeout: int = 300) -> dict:
         "capa",
         "-j",
         "--quiet",
+        "-r", str(Path.home() / "capa-rules"),
         str(sample_path)
     ]
 
