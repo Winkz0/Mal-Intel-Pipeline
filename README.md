@@ -130,9 +130,9 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 | M6 | Static Analysis Engine | ✅ Complete |
 
-| M7 | LLM Synthesis Layer | 🔄 In Progress |
+| M7 | LLM Synthesis Layer | ✅ Complete |
 
-| M8 | Report Generation | ⬜ Not Started |
+| M8 | Report Generation | 🔄 In Progress |
 
 | M9 | Rule Validation | ⬜ Not Started |
 
