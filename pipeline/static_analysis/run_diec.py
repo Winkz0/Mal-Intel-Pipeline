@@ -63,8 +63,12 @@ def run_diec(sample_path: Path, timeout: int = 60) -> dict:
             result["error"] = f"diec exited with code {proc.returncode}: {proc.stderr[:500]}"
             logger.error(result["error"])
             return result
+	
+	# Strip any non-JSON lines before parsing
+	lines = proc.stdout.strip().splitlines()
+	json_lines = [1 for 1 in lines if not 1.startswith("[")]
+        output = "\n".join(json_lines).strip()
 
-        output = proc.stdout.strip()
         if not output:
             result["error"] = "diec produced no output"
             logger.error(result["error"])
