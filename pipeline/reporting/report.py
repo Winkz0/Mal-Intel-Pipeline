@@ -1,0 +1,120 @@
+"""
+report.py
+M8 Report Generation Orchestrator.
+Loads synthesis JSON and produces all human-readable outputs.
+
+Usage:
+    python report.py <sha256>
+    python report.py --all
+"""
+
+import sys
+import json
+import logging
+import argparse
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from pipeline.reporting.report_builder import (
+    render_technical_report,
+    render_executive_summary,
+    save_report,
+)
+from pipeline.reporting.rule_extractor import extract_yara, extract_sigma
+
+logger = logging.getLogger(__name__)
+
+REPORTS_DIR = REPO_ROOT / "output" / "reports"
+
+
+def load_synthesis(sha256: str) -> dict | None:
+    # Try exact match first
+    path = REPORTS_DIR / f"{sha256}.synthesis.json"
+    if not path.exists():
+        # Partial match
+        matches = list(REPORTS_DIR.glob(f"{sha256}*.synthesis.json"))
+        if not matches:
+            logger.error(f"No synthesis file found for: {sha256[:16]}...")
+            return None
+        path = matches[0]
+
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def generate_reports(sha256: str) -> None:
+    synthesis = load_synthesis(sha256)
+    if not synthesis:
+        return
+
+    sample = synthesis.get("sample", {})
+    actual_sha256 = sample.get("sha256", sha256)
+    family = sample.get("malware_family", "unknown")
+
+    print(f"\n{'='*60}")
+    print(f"  Generating reports: {actual_sha256[:32]}...")
+    print(f"{'='*60}")
+
+    # Technical report
+    technical_md = render_technical_report(synthesis)
+    tech_path = save_report(
+        technical_md,
+        REPORTS_DIR / f"{actual_sha256}.technical.md"
+    )
+    print(f"  [+] Technical report : {tech_path.name}")
+
+    # Executive summary
+    executive_md = render_executive_summary(synthesis)
+    exec_path = save_report(
+        executive_md,
+        REPORTS_DIR / f"{actual_sha256}.executive.md"
+    )
+    print(f"  [+] Executive summary: {exec_path.name}")
+
+    # YARA rule
+    yara_rule, yara_path = extract_yara(synthesis)
+    if yara_path:
+        print(f"  [+] YARA rule        : {yara_path.name}")
+    else:
+        print(f"  [-] YARA rule        : skipped (dry run or not generated)")
+
+    # Sigma rule
+    sigma_rule, sigma_path = extract_sigma(synthesis)
+    if sigma_path:
+        print(f"  [+] Sigma rule       : {sigma_path.name}")
+    else:
+        print(f"  [-] Sigma rule       : skipped (dry run or not generated)")
+
+    print(f"\n{'='*60}")
+    print(f"  All outputs written to output/")
+    print(f"{'='*60}")
+
+
+def get_all_synthesis_hashes() -> list[str]:
+    return [
+        p.stem.replace(".synthesis", "")
+        for p in REPORTS_DIR.glob("*.synthesis.json")
+    ]
+
+
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    )
+
+    parser = argparse.ArgumentParser(description="M8 Report Generation Orchestrator")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("sha256", nargs="?", help="SHA256 (or prefix) of sample to report")
+    group.add_argument("--all", action="store_true", help="Generate reports for all synthesis files")
+    args = parser.parse_args()
+
+    if args.all:
+        hashes = get_all_synthesis_hashes()
+        print(f"Found {len(hashes)} synthesis file(s)")
+        for h in hashes:
+            generate_reports(h)
+    else:
+        generate_reports(args.sha256)
