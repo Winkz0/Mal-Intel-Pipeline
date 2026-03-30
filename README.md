@@ -136,7 +136,7 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 | M9 | Rule Validation | ✅ Complete |
 
-| M10 | Delta Analysis | 🔄 In Progress |
+| M10 | Delta Analysis | ✅ Complete |
 
 
 
@@ -208,9 +208,9 @@ mal-intel-pipeline/
 
 \## Status
 
+\*\*copy/paste pool 🔄 In Progress
 
-
-\*\*Current Milestone:\*\* \ M9 - Rule Validation
+\*\*Current Milestone:\*\* \ M10 - Delta Analysis
 
 \*\*Last Updated:\*\* 2026-03-30
 
