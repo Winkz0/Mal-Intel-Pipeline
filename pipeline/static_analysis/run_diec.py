@@ -64,9 +64,9 @@ def run_diec(sample_path: Path, timeout: int = 60) -> dict:
             logger.error(result["error"])
             return result
 	
-	# Strip any non-JSON lines before parsing
-	lines = proc.stdout.strip().splitlines()
-	json_lines = [1 for 1 in lines if not 1.startswith("[")]
+        # Strip any non-JSON lines before parsing
+        lines = proc.stdout.strip().splitlines()
+        json_lines = [l for l in lines if not l.startswith("[")]
         output = "\n".join(json_lines).strip()
 
         if not output:
