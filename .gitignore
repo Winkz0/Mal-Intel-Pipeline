@@ -217,6 +217,7 @@ config/secrets.json
 # Malware samples - NEVER commit these
 samples/quarantine/*
 samples/analyzed/*
+samples/registry.json
 !samples/quarantine/.gitkeep
 !samples/analyzed/.gitkeep
 

@@ -18,6 +18,7 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
+from pipeline.utils.naming import register_alias
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,12 @@ def register_sample(sample_path: Path, family: str = None, tags: list = None) ->
     print(f"  Sidecar  : {meta_path.name}")
     print(f"{'='*55}")
 
+# Prompt for alias
+    alias_input = input("  Enter sample alias (e.g. SmokeLoader_033126) or press Enter to skip: ").strip()
+    if alias_input:
+        register_alias(sha256, alias_input)
+        print(f"  [+] Alias registered: {alias_input}")
+        
     return meta_path
 
 
