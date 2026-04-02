@@ -7,6 +7,7 @@ Includes dry-run mode, cost estimation, and structured output parsing.
 import os
 import json
 import logging
+import re
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -32,6 +33,48 @@ def load_analysis(sha256: str) -> dict | None:
     with open(analysis_path, "r") as f:
         return json.load(f)
 
+def validate_yara_strings(yara_rule: str) -> str:
+    """
+    Check for unreferenced strings in a YARA rule.
+    If a declared string isn't in the condition, log a warning
+    and drop it from the strings section.
+    Returns the (possibly modified) YARA rule string.
+    """
+    if not yara_rule or yara_rule == "[DRY RUN]":
+        return yara_rule
+
+    # Extract declared string names from strings: section
+    declared = re.findall(r'(\$\w+)\s*=', yara_rule)
+    if not declared:
+        return yara_rule
+
+    # Extract the condition: section
+    condition_match = re.search(r'condition\s*:(.*)', yara_rule, re.DOTALL)
+    if not condition_match:
+        return yara_rule
+
+    condition_text = condition_match.group(1)
+
+    # Check for wildcard references that cover all strings
+    if re.search(r'(any|all)\s+of\s+(them|\(\s*\$)', condition_text):
+        return yara_rule
+
+    unreferenced = []
+    for var in declared:
+        if var not in condition_text:
+            unreferenced.append(var)
+
+    if unreferenced:
+        logger.warning(f"YARA: unreferenced strings found: {unreferenced}")
+        # Remove unreferenced strings from the rule
+        for var in unreferenced:
+            # Remove the full line declaring this string
+            yara_rule = re.sub(
+                r'\n\s*' + re.escape(var) + r'\s*=.*', '', yara_rule
+            )
+        logger.info(f"YARA: removed {len(unreferenced)} unreferenced strings")
+
+    return yara_rule
 
 def synthesize(
     analysis: dict,
@@ -84,6 +127,16 @@ def synthesize(
 
         raw = message.content[0].text
         result["raw_response"] = raw
+        
+        # Dump raw response to log file
+        raw_log_dir = REPO_ROOT / "output" / "logs" / "raw_responses"
+        raw_log_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        sample_sha = analysis.get("sample", {}).get("sha256", "unknown")
+        raw_log_path = raw_log_dir / f"{sample_sha}_{ts}.json"
+        with open(raw_log_path, "w") as rl:
+            json.dump({"model": MODEL, "raw_text": raw, "timestamp": ts}, rl, indent=2)
+        logger.info(f"Raw response logged: {raw_log_path}")
 
         # Strip markdown code blocks if Claude wraps JSON anyway
         clean = raw.strip()
@@ -95,6 +148,11 @@ def synthesize(
 
         result["synthesis"] = json.loads(clean)
         logger.info("Synthesis complete")
+
+        # Validate YARA rule — remove unreferenced strings
+        yara_section = result["synthesis"].get("yara_rule", {})
+        if isinstance(yara_section, dict) and "rule" in yara_section:
+            yara_section["rule"] = validate_yara_strings(yara_section["rule"])
 
     except json.JSONDecodeError as e:
         result["error"] = f"Failed to parse Claude response as JSON: {e}"
