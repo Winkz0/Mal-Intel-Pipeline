@@ -106,7 +106,20 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 
 
 
-\---
+\## Sample Acquisition
+
+Programmatic sample downloads from MalwareBazaar are supported via the API ('acquire_sample.py'), but both MB and VT require paid tiers for actual file downloads. Manual acquisition on REMnux is the primary workflow:
+
+1. Switch REMnux network adapter to NAT in VMware
+2. Download the sample archive:
+	'wget --header "Auth-Key: <key>" --post-data "query=get_file&sha256_hash=<HASH>" https://mb-api.abuse.ch/api/v1 -0 ~/<name>.zip'
+2. Verify the download is a ZIP (not JSON error): 'file ~/<name.zip'
+3. Swich REMnux network adapter back to VMnet2 (isolated)
+5. Extract: '7z x -pinfected ~/<name>.zip -o/tmp/<name>/'
+6. Register: 'python3 pipeline/acquisition/register_sample.py <path> --family <name> --tags <tag1,tag2>'
+
+Samples are stored in 'samples/quarantine/' (gitignored) with JSON sidecar metadata
+Samples never leave REMnux VM
 
 
 
