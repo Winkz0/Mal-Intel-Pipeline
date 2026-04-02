@@ -15,6 +15,7 @@ REGISTRY_PATH = REPO_ROOT / "samples" / "registry.json"
 
 
 def _load_registry() -> dict:
+    """Load the alias registry from disk."""
     if not REGISTRY_PATH.exists():
         return {}
     with open(REGISTRY_PATH, "r") as f:
@@ -22,12 +23,14 @@ def _load_registry() -> dict:
 
 
 def _save_registry(registry: dict):
+    """Write the alias registry to disk."""
     REGISTRY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(REGISTRY_PATH, "w") as f:
         json.dump(registry, f, indent=2)
 
 
 def register_alias(sha256: str, alias: str):
+    """Add a SHA256 → alias mapping to the registry."""
     registry = _load_registry()
     registry[sha256] = alias
     _save_registry(registry)
@@ -36,8 +39,8 @@ def register_alias(sha256: str, alias: str):
 
 def resolve(identifier: str) -> dict | None:
     """
-    Takes a SHA256 or alias, returns {"sha256": ..., "alias": ...}
-    or None if not found.
+    Takes a SHA256 (or prefix) or alias.
+    Returns {"sha256": ..., "alias": ...} or None if not found.
     """
     registry = _load_registry()
 

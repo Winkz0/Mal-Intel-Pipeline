@@ -128,7 +128,7 @@ def register_sample(sample_path: Path, family: str = None, tags: list = None) ->
     print(f"  Sidecar  : {meta_path.name}")
     print(f"{'='*55}")
 
-# Prompt for alias
+    # Prompt for alias
     alias_input = input("  Enter sample alias (e.g. SmokeLoader_033126) or press Enter to skip: ").strip()
     if alias_input:
         register_alias(sha256, alias_input)
