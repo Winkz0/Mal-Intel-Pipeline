@@ -18,7 +18,11 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
-from pipeline.utils.naming import register_alias
+try:
+    from pipeline.utils.naming import register_alias
+    _HAS_NAMING = True
+except ImportError:
+    _HAS_NAMING = False
 
 logger = logging.getLogger(__name__)
 
@@ -128,11 +132,14 @@ def register_sample(sample_path: Path, family: str = None, tags: list = None) ->
     print(f"  Sidecar  : {meta_path.name}")
     print(f"{'='*55}")
 
-    # Prompt for alias
-    alias_input = input("  Enter sample alias (e.g. SmokeLoader_033126) or press Enter to skip: ").strip()
-    if alias_input:
-        register_alias(sha256, alias_input)
-        print(f"  [+] Alias registered: {alias_input}")
+    # Prompt for human-readable alias
+    if _HAS_NAMING:
+        alias_input = input("  Enter sample alias (e.g. SmokeLoader_033126) or press Enter to skip: ").strip()
+        if alias_input:
+            register_alias(sha256, alias_input)
+            print(f"  [+] Alias registered: {alias_input}")
+    else:
+        print("  [~] Naming module not available — alias skipped")
         
     return meta_path
 
