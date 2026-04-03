@@ -85,6 +85,8 @@ def synthesize(
     """
     Send prompt to Claude API and return structured synthesis result.
     dry_run=True skips the API call and returns a placeholder.
+    Raw response is always logged to output/logs/raw_responses regardless
+    of whether raw_response is retained in the synthesis JSON
     """
     result = {
         "schema_version": "1.0",

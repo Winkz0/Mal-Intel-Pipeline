@@ -38,6 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("sha256", help="SHA256 of sample to synthesize")
     parser.add_argument("--dry-run", action="store_true", help="Skip API call, return placeholder output")
     parser.add_argument("--skip-checkpoint", action="store_true", help="Skip checkpoint #2 review")
+    parser.add_argument("--no-raw", action="store_true", help="Suppress raw_response in synthesis JSON (still logged to output/logs/raw_responses/)")
     args = parser.parse_args()
 
     # Load analysis
@@ -76,7 +77,10 @@ if __name__ == "__main__":
     if result["error"]:
         print(f"\n[!] Synthesis failed: {result['error']}")
         sys.exit(1)
-
+    
+    if args.no_raw:
+        result["raw_response"] = None
+    
     # Save
     out_path = save_synthesis(result)
 
