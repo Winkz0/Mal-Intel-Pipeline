@@ -49,7 +49,7 @@ def render_technical_report(synthesis: dict) -> str:
             alias = resolved["alias"]
     display_name = alias or family.title()
 
-    md = f"""# Malware Analysis Report — {display_name()}\n\n"
+    md = f"""# Malware Analysis Report — {display_name}
 
 **SHA256:** `{sha256}`
 **File:** {sample.get("file_name", "unknown")}
@@ -195,7 +195,7 @@ def render_executive_summary(synthesis: dict) -> str:
             alias = resolved["alias"]
     display_name = alias or family.title()
     
-    md = f"""# Executive Summary — {display_name()}\n\n" Threat Analysis
+    md = f"""# Executive Summary — {display_name} Threat Analysis
 
 **Date:** {analyzed_at}
 **Sample:** `{sha256[:16]}...`
