@@ -18,6 +18,10 @@ import argparse
 import logging
 from pathlib import Path
 from datetime import datetime, timezone
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
 try:
     from pipeline.utils.naming import register_alias
     _HAS_NAMING = True
