@@ -8,6 +8,11 @@ Produces two audience-aware documents:
 
 from pathlib import Path
 from datetime import datetime, timezone
+try:
+    from pipeline.utils.naming import resolve
+    _HAS_NAMING = True
+except ImportError:
+    _HAS_NAMING = False
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = REPO_ROOT / "output" / "reports"
@@ -36,7 +41,15 @@ def render_technical_report(synthesis: dict) -> str:
     recommended_actions = report.get("recommended_actions", [])
     log_sources = sigma.get("log_sources", [])
 
-    md = f"""# Malware Analysis Report — {family.title()}
+    # Resolve human-readable alias if available
+    alias = None
+    if _HAS_NAMING:
+        resolved = resolve(sha256)
+        if resolved:
+            alias = resolved["alias"]
+    display_name = alias or family.title()
+
+    md = f"""# Malware Analysis Report — {display_name()}\n\n"
 
 **SHA256:** `{sha256}`
 **File:** {sample.get("file_name", "unknown")}
@@ -173,8 +186,16 @@ def render_executive_summary(synthesis: dict) -> str:
     analyzed_at = synthesis.get("synthesized_at", "unknown")
     confidence = ttp.get("confidence", "unknown").upper()
     recommended_actions = report.get("recommended_actions", [])
-
-    md = f"""# Executive Summary — {family.title()} Threat Analysis
+    
+    # Resolve human-readable alias if available
+    alias = None
+    if _HAS_NAMING:
+        resolved = resolve(sha256)
+        if resolved:
+            alias = resolved["alias"]
+    display_name = alias or family.title()
+    
+    md = f"""# Executive Summary — {display_name()}\n\n" Threat Analysis
 
 **Date:** {analyzed_at}
 **Sample:** `{sha256[:16]}...`
