@@ -63,6 +63,7 @@ def run_checkpoint(iocs: list[dict]) -> list[dict]:
         if selection == "none":
             print("No samples approved. Exiting.")
             save_checkpoint(iocs, approved_count=0)
+            save_approved_manifest(iocs)
             return iocs
 
         elif selection == "all":
@@ -117,6 +118,57 @@ def save_checkpoint(iocs: list[dict], approved_count: int):
     logger.info(f"Checkpoint saved: {filename}")
     print(f"Checkpoint saved: {filename}")
 
+def save_approved_manifest(iocs: list[dict]):
+    """
+    Save a clean manifest of only approved hash IOCs.
+    Includes family name, tags, and a ready-to-use wget command
+    for each sample. Designed as an acquisition shopping list for REMnux.
+    """
+    approved_hashes = [
+        ioc for ioc in iocs
+        if ioc.get("approved_for_analysis") is True
+        and ioc.get("ioc_type") == "hash"
+    ]
+
+    if not approved_hashes:
+        print("  [~] No approved hash IOCs — skipping manifest.")
+        return
+
+    os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    manifest_path = f"{CHECKPOINT_DIR}/approved_{timestamp}.json"
+
+    entries = []
+    for ioc in approved_hashes:
+        sha256 = ioc.get("value", "")
+        family = ioc.get("context", {}).get("malware_family", "unknown")
+        tags = ioc.get("context", {}).get("tags", [])
+        file_info = ioc.get("file_info", {})
+        safe_family = family.replace(" ", "_") if family else "unknown"
+
+        entries.append({
+            "sha256": sha256,
+            "family": family,
+            "tags": tags,
+            "file_name": file_info.get("name", "unknown"),
+            "file_type": file_info.get("type", "unknown"),
+            "file_size": file_info.get("size", 0),
+            "wget_command": f'wget --header "Auth-Key: $BAZAAR_KEY" --post-data "query=get_file&sha256_hash={sha256}" https://mb-api.abuse.ch/api/v1/ -O ~/{safe_family}.zip',
+        })
+
+    manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "count": len(entries),
+        "samples": entries,
+    }
+
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f, indent=2)
+
+    print(f"\n  [+] Approved manifest saved: {manifest_path}")
+    print(f"      {len(entries)} sample(s) ready for acquisition")
+    for e in entries:
+        print(f"      • {e['family']} — {e['sha256'][:16]}...")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
