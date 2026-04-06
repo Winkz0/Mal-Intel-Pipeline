@@ -1,57 +1,51 @@
 #!/bin/bash
-# transfer.sh — SCP helper for Mal-Intel-Pipeline
-# Handles file transfers between host and REMnux
+# run_host_pipeline.sh — Run the host-side pipeline stages for a sample
 #
 # Usage:
-#   ./scripts/transfer.sh push-checkpoint    Push latest approved manifest to REMnux
-#   ./scripts/transfer.sh pull-analysis      Pull all new analysis JSONs from REMnux
-#   ./scripts/transfer.sh pull <sha256>      Pull a specific analysis JSON
+#   ./scripts/run_host_pipeline.sh <sha256>
+#   ./scripts/run_host_pipeline.sh <sha256> --no-raw
+#   ./scripts/run_host_pipeline.sh <sha256> --skip-checkpoint
 
-REMNUX_USER="remnux"
-REMNUX_IP="10.10.10.10"
-REMOTE_REPO="~/Mal-Intel-Pipeline"
-LOCAL_REPO="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -z "$1" ]; then
+    echo "Usage: ./scripts/run_host_pipeline.sh <sha256> [--no-raw] [--skip-checkpoint]"
+    exit 1
+fi
 
-case "$1" in
-    push-checkpoint)
-        # Find the most recent approved manifest
-        MANIFEST=$(ls -t "$LOCAL_REPO/checkpoints/approved_"*.json 2>/dev/null | head -1)
-        if [ -z "$MANIFEST" ]; then
-            echo "[!] No approved manifest found in checkpoints/"
-            exit 1
-        fi
-        echo "[*] Pushing $(basename "$MANIFEST") to REMnux..."
-        scp "$MANIFEST" "$REMNUX_USER@$REMNUX_IP:$REMOTE_REPO/checkpoints/"
-        echo "[+] Done"
-        ;;
+SHA256="$1"
+shift
+EXTRA_ARGS="$@"
 
-    pull-analysis)
-        echo "[*] Pulling all analysis JSONs from REMnux..."
-        mkdir -p "$LOCAL_REPO/output/analysis"
-        scp "$REMNUX_USER@$REMNUX_IP:$REMOTE_REPO/output/analysis/*.analysis.json" \
-            "$LOCAL_REPO/output/analysis/" 2>/dev/null
-        COUNT=$(ls "$LOCAL_REPO/output/analysis/"*.analysis.json 2>/dev/null | wc -l)
-        echo "[+] $COUNT analysis file(s) in output/analysis/"
-        ;;
+echo ""
+echo "============================================================"
+echo "  Mal-Intel-Pipeline — Host Processing"
+echo "  Sample: ${SHA256:0:16}..."
+echo "============================================================"
+echo ""
 
-    pull)
-        if [ -z "$2" ]; then
-            echo "Usage: ./scripts/transfer.sh pull <sha256>"
-            exit 1
-        fi
-        echo "[*] Pulling analysis for $2..."
-        mkdir -p "$LOCAL_REPO/output/analysis"
-        scp "$REMNUX_USER@$REMNUX_IP:$REMOTE_REPO/output/analysis/$2.analysis.json" \
-            "$LOCAL_REPO/output/analysis/"
-        echo "[+] Done"
-        ;;
+# Stage 1 — Synthesis
+echo "[1/4] Running LLM synthesis..."
+python pipeline/llm_synthesis/synthesize.py "$SHA256" $EXTRA_ARGS
+if [ $? -ne 0 ]; then
+    echo "[!] Synthesis failed — aborting pipeline"
+    exit 1
+fi
 
-    *)
-        echo "Usage: ./scripts/transfer.sh {push-checkpoint|pull-analysis|pull <sha256>}"
-        echo ""
-        echo "  push-checkpoint   Push latest approved manifest to REMnux"
-        echo "  pull-analysis     Pull all analysis JSONs from REMnux"
-        echo "  pull <sha256>     Pull a specific analysis JSON"
-        exit 1
-        ;;
-esac
+# Stage 2 — Report generation
+echo ""
+echo "[2/4] Generating reports..."
+python pipeline/reporting/report.py "$SHA256"
+
+# Stage 3 — Rule validation
+echo ""
+echo "[3/4] Validating rules..."
+python pipeline/rule_validation/validate.py "$SHA256"
+
+# Stage 4 — Delta analysis
+echo ""
+echo "[4/4] Running delta analysis..."
+python pipeline/delta_analysis/delta.py "$SHA256"
+
+echo ""
+echo "============================================================"
+echo "  Pipeline complete for ${SHA256:0:16}..."
+echo "============================================================"
