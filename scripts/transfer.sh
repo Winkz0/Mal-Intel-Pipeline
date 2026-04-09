@@ -1,37 +1,40 @@
 #!/bin/bash
 # transfer.sh — SCP helper for Mal-Intel-Pipeline
-# Handles file transfers between host and REMnux
+# Now wraps the Python remote module for consistent behavior.
 #
 # Usage:
-#   ./scripts/transfer.sh push-checkpoint    Push latest approved manifest to REMnux
-#   ./scripts/transfer.sh pull-analysis      Pull all new analysis JSONs from REMnux
-#   ./scripts/transfer.sh pull <sha256>      Pull a specific analysis JSON
+#   ./scripts/transfer.sh test                Test REMnux connectivity
+#   ./scripts/transfer.sh push-checkpoint     Push latest approved manifest
+#   ./scripts/transfer.sh pull-analysis       Pull all new analysis JSONs
+#   ./scripts/transfer.sh pull <sha256>       Pull a specific analysis JSON
 
-REMNUX_USER="remnux"
-REMNUX_IP="10.10.10.10"
-REMOTE_REPO="~/Mal-Intel-Pipeline"
-LOCAL_REPO="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT"
 
 case "$1" in
+    test)
+        python -c "
+from pipeline.utils.remote import test_connection
+if test_connection():
+    print('[+] REMnux connection successful')
+else:
+    print('[!] REMnux connection failed')
+"
+        ;;
+
     push-checkpoint)
-        # Find the most recent approved manifest
-        MANIFEST=$(ls -t "$LOCAL_REPO/checkpoints/approved_"*.json 2>/dev/null | head -1)
-        if [ -z "$MANIFEST" ]; then
-            echo "[!] No approved manifest found in checkpoints/"
-            exit 1
-        fi
-        echo "[*] Pushing $(basename "$MANIFEST") to REMnux..."
-        scp "$MANIFEST" "$REMNUX_USER@$REMNUX_IP:$REMOTE_REPO/checkpoints/"
-        echo "[+] Done"
+        python -c "
+from pipeline.utils.remote import push_checkpoint
+push_checkpoint()
+"
         ;;
 
     pull-analysis)
-        echo "[*] Pulling all analysis JSONs from REMnux..."
-        mkdir -p "$LOCAL_REPO/output/analysis"
-        scp "$REMNUX_USER@$REMNUX_IP:$REMOTE_REPO/output/analysis/*.analysis.json" \
-            "$LOCAL_REPO/output/analysis/" 2>/dev/null
-        COUNT=$(ls "$LOCAL_REPO/output/analysis/"*.analysis.json 2>/dev/null | wc -l)
-        echo "[+] $COUNT analysis file(s) in output/analysis/"
+        python -c "
+from pipeline.utils.remote import pull_analysis
+pulled = pull_analysis()
+print(f'[+] {len(pulled)} analysis file(s) pulled')
+"
         ;;
 
     pull)
@@ -39,18 +42,22 @@ case "$1" in
             echo "Usage: ./scripts/transfer.sh pull <sha256>"
             exit 1
         fi
-        echo "[*] Pulling analysis for $2..."
-        mkdir -p "$LOCAL_REPO/output/analysis"
-        scp "$REMNUX_USER@$REMNUX_IP:$REMOTE_REPO/output/analysis/$2.analysis.json" \
-            "$LOCAL_REPO/output/analysis/"
-        echo "[+] Done"
+        python -c "
+from pipeline.utils.remote import pull_analysis
+pulled = pull_analysis('$2')
+if pulled:
+    print(f'[+] Pulled: {pulled[0]}')
+else:
+    print('[!] Pull failed')
+"
         ;;
 
     *)
-        echo "Usage: ./scripts/transfer.sh {push-checkpoint|pull-analysis|pull <sha256>}"
+        echo "Usage: ./scripts/transfer.sh {test|push-checkpoint|pull-analysis|pull <sha256>}"
         echo ""
-        echo "  push-checkpoint   Push latest approved manifest to REMnux"
-        echo "  pull-analysis     Pull all analysis JSONs from REMnux"
+        echo "  test              Test SSH connectivity to REMnux"
+        echo "  push-checkpoint   Push latest approved manifest"
+        echo "  pull-analysis     Pull all analysis JSONs"
         echo "  pull <sha256>     Pull a specific analysis JSON"
         exit 1
         ;;
