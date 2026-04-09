@@ -10,6 +10,7 @@ import os
 import requests
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+from pipeline.ingestion.cache import get_cached, set_cache
 
 load_dotenv("config/secrets.env")
 
@@ -24,6 +25,11 @@ def fetch_otx_pulses() -> list[dict]:
     """
     Fetches recent OTX pulses via REST and returns normalized IOC dicts.
     """
+    # Check cache first
+    cached = get_cached("bazaar")
+    if cached is not None:
+        return cached
+        
     if not OTX_API_KEY:
         logger.error("OTX_API_KEY not set in config/secrets.env")
         return []
@@ -93,6 +99,7 @@ def fetch_otx_pulses() -> list[dict]:
             })
 
     logger.info(f"OTX: normalized {len(normalized)} indicators")
+    set_cache("bazaar", normalized)
     return normalized
 
 

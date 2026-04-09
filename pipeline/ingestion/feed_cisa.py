@@ -7,6 +7,7 @@ No authentication required - Public endpoint
 import requests
 import logging
 from datetime import datetime, timezone
+from pipeline.ingestion.cache import get_cached, set_cache
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,10 @@ def fetch_cisa_kev() -> list[dict]:
     """
     Fetches the CISA KEV feed and returns a list of normalized IOC dicts.
     """
+    # Check cache first
+    cached = get_cached("cisa_kev")
+    if cached is not None:
+        return cached
     logger.info("Fetching CISA KEV feed...")
     
     try:
@@ -53,6 +58,7 @@ def fetch_cisa_kev() -> list[dict]:
             "approved_for_analysis": False,
             "ingested_at": datetime.now(timezone.utc).isoformat()
         })
+    set_cache("cisa_kev", normalized)
     return normalized
     
     
