@@ -1,20 +1,20 @@
-# Mal-Intel-Pipeline
+# Overview
 
-Modular human-in-the-loop Malware intel \& Analysis pipeline
+Mal-Intel-Pipeline is a modular, human-in-the-loop malware intelligence and analysis pipeline built for security researchers and SOC analysts.
 
-
-
-\# Mal-Intel-Pipeline
+It ingests threat intelligence feeds, acquires malware samples, performs static analysis in an isolated REMnux environment, synthesizes findings via the Claude API, and generates structured analyst reports with YARA/Sigma Detection rules. This is a passion project with the desired outcome of learning more about Python, malware analysis, how intel feeds work, learning the basics of having a GitHub Repo. This project is still in its infancy, and while there is no desired "end goal" this will continue to change dynamically as time goes by and further knowledge is gained.
 
 
 
-A modular, human-in-the-loop threat intelligence and malware analysis pipeline.
+\# Getting Started
 
+1. Clone the repo
 
+2. Copy 'config/secrets.env.template' to 'config/secrets.env' and fill in your API keys (all required keys are listed in the file)
 
-Ingests threat intel feeds, acquires malware samples, performs static analysis, and generates structured analyst reports with YARA/Sigma rule suggestions — augmented by Claude AI at the synthesis layer.
+3. Set up a REMnux VM and clone the repo there as well
 
-
+4 See the [session startup playbook](docs/playbook.md) for the full workflow
 
 \---
 
@@ -105,21 +105,6 @@ Ingests threat intel feeds, acquires malware samples, performs static analysis, 
 | Rule Validation | PyYARA, Sigma CLI |
 
 
-
-\## Sample Acquisition
-
-Programmatic sample downloads from MalwareBazaar are supported via the API ('acquire_sample.py'), but both MB and VT require paid tiers for actual file downloads. Manual acquisition on REMnux is the primary workflow:
-
-1. Switch REMnux network adapter to NAT in VMware
-2. Download the sample archive:
-	'wget --header "Auth-Key: <key>" --post-data "query=get_file&sha256_hash=<HASH>" https://mb-api.abuse.ch/api/v1 -0 ~/<name>.zip'
-2. Verify the download is a ZIP (not JSON error): 'file ~/<name.zip'
-3. Swich REMnux network adapter back to VMnet2 (isolated)
-5. Extract: '7z x -pinfected ~/<name>.zip -o/tmp/<name>/'
-6. Register: 'python3 pipeline/acquisition/register_sample.py <path> --family <name> --tags <tag1,tag2>'
-
-Samples are stored in 'samples/quarantine/' (gitignored) with JSON sidecar metadata
-Samples never leave REMnux VM
 
 
 
@@ -221,9 +206,9 @@ mal-intel-pipeline/
 
 \## Status
 
-\*\*copy/paste pool 🔄 In Progress
+\*\*copy/paste pool 🔄 In Progress ✅ Complete
 
-\*\*Current Milestone:\*\* \ M10 - Delta Analysis
+\*\*Current Milestone:\*\* \ Workshopping V2 Ideas
 
-\*\*Last Updated:\*\* 2026-03-30
+\*\*Last Updated:\*\* 2026-04-07
 

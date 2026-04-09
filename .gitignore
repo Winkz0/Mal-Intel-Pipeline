@@ -226,6 +226,7 @@ output/reports/*
 output/rules/yara/*
 output/rules/sigma/*
 output/logs/*
+output/logs/cache/
 !output/reports/.gitkeep
 !output/rules/yara/.gitkeep
 !output/rules/sigma/.gitkeep
