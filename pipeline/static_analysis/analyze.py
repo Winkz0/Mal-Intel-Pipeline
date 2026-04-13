@@ -15,6 +15,26 @@ import json
 import logging
 import argparse
 from pathlib import Path
+import concurrent.futures
+
+def analyze_all_samples(hashes: list[str]):
+    # leave 1 core free for the OS to prevent the VM from locking up
+    max_workers = max(1, os.cpu_count() - 1)
+    
+    print(f"[*] Starting parallel analysis of {len(hashes)} samples using {max_workers} workers...")
+    
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all hashes to the pool
+        futures = {executor.submit(analyze_sample, h): h for h in hashes}
+        
+        for future in concurrent.futures.as_completed(futures):
+            h = futures[future]
+            try:
+                result = future.result()
+                if result:
+                    print(f"  [+] Finished: {h[:16]}...")
+            except Exception as exc:
+                print(f"  [!] {h[:16]} generated an exception: {exc}")
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))

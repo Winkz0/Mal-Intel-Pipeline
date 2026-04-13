@@ -61,7 +61,7 @@ def validate_yara_strings(yara_rule: str) -> str:
 
     # Build a set of prefixes used in wildcard references like "2 of ($api_*)"
     wildcard_prefixes = set()
-    for match in re.finditer(r'of\s*\(\s*(\$\w+?_\*\s*\)', condition_text):
+    for match in re.finditer(r'of\s*\(\s*(\$\w+?)_\*\s*\)', condition_text):
         wildcard_prefixes.add(match.group(1) + "_")
 
     unreferenced = []
@@ -70,7 +70,7 @@ def validate_yara_strings(yara_rule: str) -> str:
             continue
         # Check if this string is covered by a wildcard references
         covered_by_wildcard = False
-        for previx in wildcard_prefixes:
+        for prefix in wildcard_prefixes:
             if var.startswith(prefix):
                 covered_by_wildcard = True
                 break

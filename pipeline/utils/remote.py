@@ -158,7 +158,7 @@ def push_checkpoint() -> bool:
     Push the most recent approved manifest to REMnux.
     """
     checkpoint_dir = REPO_ROOT / "checkpoints"
-    manifests = sorted(checkpoint_dir.glob("approved_*.json"), reverse=True)
+    manifests = sorted(checkpoint_dir.glob("checkpoint1_*.json"), reverse=True)
 
     if not manifests:
         logger.error("No approved manifest found in checkpoints/")
