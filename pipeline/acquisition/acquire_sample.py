@@ -13,6 +13,7 @@ import zipfile
 import requests
 from pathlib import Path
 from datetime import datetime, timezone
+import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
@@ -182,14 +183,17 @@ def write_quarantine(sample_bytes: bytes, ioc: dict) -> Path | None:
     if not file_ext or len(file_ext) > 10:
         file_ext = "bin"
 
-    sample_path = QUARANTINE_DIR / f"{sha256}.{file_ext}"
+    # NEW: Change path to a zip file instead of the raw extension
+    sample_path = QUARANTINE_DIR / f"{sha256}.zip"
     meta_path = QUARANTINE_DIR / f"{sha256}.meta.json"
 
     QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Write sample
-    with open(sample_path, "wb") as f:
-        f.write(sample_bytes)
+    # NEW: Write sample securely using pyzipper
+    with pyzipper.AESZipFile(sample_path, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zf:
+        zf.setpassword(b'infected')
+        # We store the file inside the zip with its original identified extension
+        zf.writestr(f"{sha256}.{file_ext}", sample_bytes)
 
     # Write sidecar metadata
     meta = {
@@ -212,7 +216,10 @@ def write_quarantine(sample_bytes: bytes, ioc: dict) -> Path | None:
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
 
-    logger.info(f"Quarantined: {sample_path.name}")
+    # NEW: Log to the database
+    update_status(sha256, 'ACQUIRED', meta.get("malware_family", "unknown"))
+
+    logger.info(f"Quarantined and Defanged: {sample_path.name}")
     return sample_path
 
 
@@ -229,61 +236,61 @@ def acquire_approved_samples(api_key: str, checkpoint_file: str = None) -> list[
 
     acquisition_log = []
 
-    for ioc in approved:
+    # NEW: Extract the single-sample processing logic
+    def process_ioc(ioc):
         sha256 = ioc.get("value", "")
         if not sha256 or len(sha256) != 64:
             logger.warning(f"Skipping invalid hash: {sha256}")
-            continue
+            return None
 
-        sample_path = QUARANTINE_DIR / f"{sha256}.*"
-        # Skip if already quarantined
-        existing = list(QUARANTINE_DIR.glob(f"{sha256}.*"))
-        if any(p.suffix != ".json" for p in existing):
+        zip_path = QUARANTINE_DIR / f"{sha256}.zip"
+        if zip_path.exists():
             logger.info(f"Already quarantined, skipping: {sha256[:16]}...")
-            acquisition_log.append({"sha256": sha256, "status": "already_present"})
-            continue
+            return {"sha256": sha256, "status": "already_present"}
 
         logger.info(f"Acquiring: {sha256[:16]}... ({ioc.get('context', {}).get('malware_family', 'unknown')})")
 
-        # Download - try Bazaar first, fall back to VT
         vt_key = os.getenv("VIRUSTOTAL_API_KEY")
         zip_bytes = download_from_bazaar(sha256, api_key)
         
         if zip_bytes:
-            # Extract from Bazaar ZIP
             sample_bytes = extract_sample_from_zip(zip_bytes, sha256)
             if not sample_bytes:
-                acquisition_log.append({"sha256": sha256, "status": "extraction_failed"})
-                continue
+                return {"sha256": sha256, "status": "extraction_failed"}
         else:
-            # Bazaar failed - try VT direct download
             logger.info(f"Bazaar failed, trying VirusTotal for {sha256[:16]}...")
             if not vt_key:
                 logger.error("VIRUSTOTAL_API_KEY not set, cannot fall back to VT")
-                acquisition_log.append({"sha256": sha256, "status": "download_failed"})
-                continue
+                return {"sha256": sha256, "status": "download_failed"}
             sample_bytes = download_from_virustotal(sha256, vt_key)
             if not sample_bytes:
-                acquisition_log.append({"sha256": sha256, "status": "download_failed"})
-                continue
+                return {"sha256": sha256, "status": "download_failed"}
 
-        # Verify
         if not verify_hash(sample_bytes, sha256):
-            acquisition_log.append({"sha256": sha256, "status": "hash_mismatch"})
-            continue
+            return {"sha256": sha256, "status": "hash_mismatch"}
 
-        # Quarantine
         path = write_quarantine(sample_bytes, ioc)
         if path:
-            acquisition_log.append({
+            return {
                 "sha256": sha256,
                 "status": "acquired",
                 "path": str(path),
                 "family": ioc.get("context", {}).get("malware_family", "unknown"),
                 "acquired_at": datetime.now(timezone.utc).isoformat(),
-            })
+            }
         else:
-            acquisition_log.append({"sha256": sha256, "status": "write_failed"})
+            return {"sha256": sha256, "status": "write_failed"}
+
+    acquisition_log = []
+
+    # NEW: ThreadPoolExecutor for concurrent downloads
+    print(f"[*] Starting parallel acquisition of {len(approved)} samples...")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        futures = [executor.submit(process_ioc, ioc) for ioc in approved]
+        for future in concurrent.futures.as_completed(futures):
+            result = future.result()
+            if result:
+                acquisition_log.append(result)
 
     return acquisition_log
 

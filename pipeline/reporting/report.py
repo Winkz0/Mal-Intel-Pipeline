@@ -13,6 +13,8 @@ import json
 import logging
 import argparse
 from pathlib import Path
+import os
+from pipeline.utils.db import get_samples_by_status, update_status
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
@@ -87,16 +89,24 @@ def generate_reports(sha256: str) -> None:
     else:
         print(f"  [-] Sigma rule       : skipped (dry run or not generated)")
 
+    update_status(actual_sha256, 'REPORTED')
+    
+    # NEW: Update DB anc Cleanup Storage
+    zip_path = REPO_ROOT / "samples" / "quarantine" / f"{actual_sha256}.zip"
+    if zip_path.exists():
+        try:
+            os.remove(zip_path)
+            print(f"  [+] Storage cleanup  : Removed {zip_path.name} to save disk space")
+        except Exception as e:
+            print(f"  [!] Storage cleanup  : Failed to remove {zip_path.name} ({e})")
+
     print(f"\n{'='*60}")
     print(f"  All outputs written to output/")
     print(f"{'='*60}")
 
 
-def get_all_synthesis_hashes() -> list[str]:
-    return [
-        p.stem.replace(".synthesis", "")
-        for p in REPORTS_DIR.glob("*.synthesis.json")
-    ]
+def get_pending_reports() -> list[str]:
+    return get_samples_by_status('SYNTHESIZED')
 
 
 if __name__ == "__main__":
@@ -112,8 +122,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.all:
-        hashes = get_all_synthesis_hashes()
-        print(f"Found {len(hashes)} synthesis file(s)")
+        hashes = get_pending_reports()
+        print(f"Found {len(hashes)} sample(s) pending report generation")
         for h in hashes:
             generate_reports(h)
     else:
