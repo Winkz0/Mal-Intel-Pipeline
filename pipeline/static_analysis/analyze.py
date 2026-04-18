@@ -17,12 +17,14 @@ import argparse
 from pathlib import Path
 import shutil
 import pyzipper
-from pipeline.utils.db import get_samples_by_status, update_status
 import concurrent.futures
 
+# 1. RESOLVE PATH FIRST
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+# 2. THEN IMPORT FROM PIPELINE
+from pipeline.utils.db import get_samples_by_status, update_status
 from pipeline.static_analysis.run_floss import run_floss
 from pipeline.static_analysis.run_capa import run_capa
 from pipeline.static_analysis.run_diec import run_diec
@@ -98,31 +100,31 @@ def analyze_sample(sha256: str) -> dict | None:
         out_path = save_analysis(analysis)
         update_status(sha256, 'ANALYZED')
     
-    # New: Execute Triage Scoring
-    triage = calculate_score(analysis)
-    from pipeline.utils.db import update_triage_score
-    update_triage_score(sha256, triage['score'], triage['needs_dynamic'])
-    
-    print(f"\n Triage Score   : {triage['score']}")
-    if triage['needs_dynamic']:
-        print(f" [!] Flagged for Dynamic Detonation (Score >= 50)")
-    
+        # New: Execute Triage Scoring (Now properly indented inside the try block)
+        triage = calculate_score(analysis)
+        from pipeline.utils.db import update_triage_score
+        update_triage_score(sha256, triage['score'], triage['needs_dynamic'])
+        
+        print(f"\n Triage Score   : {triage['score']}")
+        if triage['needs_dynamic']:
+            print(f" [!] Flagged for Dynamic Detonation (Score >= 50)")
+        
+        print(f"\n  IOC Candidates:")
+        iocs = analysis["ioc_candidates"]
+        print(f"    IPs      : {len(iocs['ips'])}")
+        print(f"    URLs     : {len(iocs['urls'])}")
+        print(f"    Commands : {len(iocs['commands'])}")
+        print(f"\n  Analysis saved: {out_path.name}")
+        print(f"{'='*60}")
 
-    print(f"\n  IOC Candidates:")
-    iocs = analysis["ioc_candidates"]
-    print(f"    IPs      : {len(iocs['ips'])}")
-    print(f"    URLs     : {len(iocs['urls'])}")
-    print(f"    Commands : {len(iocs['commands'])}")
-    print(f"\n  Analysis saved: {out_path.name}")
-    print(f"{'='*60}")
-
-    return analysis
+        return analysis
 
     finally:
         # 4. INSTANT WIPE: This runs even if a tool crashes the script
         if ram_disk_dir.exists():
             shutil.rmtree(ram_disk_dir)
             print(f"  [*] Volatile RAM disk wiped for {sha256[:16]}...")
+
 
 def get_pending_analyses() -> list[str]:
     return get_samples_by_status('ACQUIRED')

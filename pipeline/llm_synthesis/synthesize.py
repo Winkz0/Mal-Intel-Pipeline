@@ -60,11 +60,14 @@ def process_synthesis(sha256: str, dry_run: bool, skip_checkpoint: bool, no_raw:
     
     out_path = save_synthesis(result)
     
-    # Database update from earlier
-    from pipeline.utils.db import update_status
-    update_status(sha256, 'SYNTHESIZED')
-    
-    print(f"  [+] Synthesis complete for {sha256[:16]}... -> {out_path.name}")
+    # NEW: Only advance the pipeline state if it is a real run
+    if not dry_run:
+        from pipeline.utils.db import update_status
+        update_status(sha256, 'SYNTHESIZED')
+        print(f"  [+] Synthesis complete for {sha256[:16]}... -> {out_path.name}")
+    else:
+        print(f"  [~] DRY RUN complete for {sha256[:16]}... (DB state NOT advanced)")
+        
     return True
 
 
@@ -96,18 +99,19 @@ if __name__ == "__main__":
             args.skip_checkpoint = True
         
         # 5 is a safe concurrency limit for Claude/OpenAI APIs to avoid rate-limiting
-        print(f"[*] Starting parallel LLM synthesis (max 5 concurrent calls)...")
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                executor.submit(process_synthesis, h, args.dry_run, args.skip_checkpoint, args.no_raw): h 
-                for h in hashes
-            }
-            for future in concurrent.futures.as_completed(futures):
-                h = futures[future]
-                try:
-                    future.result()
-                except Exception as exc:
-                    print(f"  [!] Synthesis for {h[:16]} generated an exception: {exc}")
+        import time
+        
+        print(f"[*] Starting sequential LLM synthesis (Throttled to respect API Tier limits)...")
+        
+        for index, h in enumerate(hashes):
+            if index > 0:
+                print("  [~] Rate limit cooldown: Sleeping for 20 seconds...")
+                time.sleep(20)
+                
+            try:
+                process_synthesis(h, args.dry_run, args.skip_checkpoint, args.no_raw)
+            except Exception as exc:
+                print(f"  [!] Synthesis for {h[:16]} generated an exception: {exc}")
     else:
         # Single run behavior
         process_synthesis(args.sha256, args.dry_run, args.skip_checkpoint, args.no_raw)

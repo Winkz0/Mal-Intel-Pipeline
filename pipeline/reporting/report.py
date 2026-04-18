@@ -14,11 +14,13 @@ import logging
 import argparse
 from pathlib import Path
 import os
-from pipeline.utils.db import get_samples_by_status, update_status
 
+# 1. RESOLVE PATH FIRST
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+# 2. THEN IMPORT FROM PIPELINE
+from pipeline.utils.db import get_samples_by_status, update_status
 from pipeline.reporting.report_builder import (
     render_technical_report,
     render_executive_summary,
@@ -91,22 +93,27 @@ def generate_reports(sha256: str) -> None:
 
     update_status(actual_sha256, 'REPORTED')
     
-    # NEW: Update DB anc Cleanup Storage
+    # NEW: Update DB and Cleanup Storage
     zip_path = REPO_ROOT / "samples" / "quarantine" / f"{actual_sha256}.zip"
+    meta_path = REPO_ROOT / "samples" / "quarantine" / f"{actual_sha256}.meta.json"
+    
     if zip_path.exists():
         try:
             os.remove(zip_path)
             print(f"  [+] Storage cleanup  : Removed {zip_path.name} to save disk space")
         except Exception as e:
             print(f"  [!] Storage cleanup  : Failed to remove {zip_path.name} ({e})")
-
-    print(f"\n{'='*60}")
-    print(f"  All outputs written to output/")
-    print(f"{'='*60}")
+            
+    if meta_path.exists():
+        try:
+            os.remove(meta_path)
+            print(f"  [+] Storage cleanup  : Removed {meta_path.name}")
+        except Exception as e:
+            print(f"  [!] Storage cleanup  : Failed to remove {meta_path.name} ({e})")
 
 
 def get_pending_reports() -> list[str]:
-    return get_samples_by_status('SYNTHESIZED')
+    return get_samples_by_status('APPROVED')
 
 
 if __name__ == "__main__":

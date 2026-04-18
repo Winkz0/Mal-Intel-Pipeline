@@ -5,35 +5,68 @@ Runs all three feed parsers, normalizes, deduplicates,
 and presents human checkpoint #1 for analyst approval.
 """
 
-import json
+import sys
+from pathlib import Path
 import logging
 import os
+import json
 from datetime import datetime, timezone
+
+# Resolve the root directory so Python can find the 'pipeline' module
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
 
 from pipeline.ingestion.feed_cisa import fetch_cisa_kev
 from pipeline.ingestion.feed_otx import fetch_otx_pulses
 from pipeline.ingestion.feed_bazaar import fetch_bazaar_recent
 from pipeline.ingestion.normalizer import normalize_all
-from pipeline.ingestion.deduplicator import deduplicate
 from pipeline.ingestion.checkpoint import run_checkpoint
 
 logger = logging.getLogger(__name__)
 
 OUTPUT_DIR = "output/logs"
 
+def enrich_bazaar_with_intel(bazaar_iocs: list[dict], cisa_iocs: list[dict], otx_iocs: list[dict]) -> list[dict]:
+    """
+    Uses MalwareBazaar as the guaranteed base for downloads.
+    Cross-references with CISA and OTX locally to add high-value tags and context.
+    """
+    print(f"[*] Enriching {len(bazaar_iocs)} guaranteed Bazaar samples with CISA/OTX intel...")
+    
+    # Create fast lookups
+    cisa_lookup = {ioc.get("value"): ioc for ioc in cisa_iocs if ioc.get("ioc_type") == "hash"}
+    otx_lookup = {ioc.get("value"): ioc for ioc in otx_iocs if ioc.get("ioc_type") == "hash"}
+    
+    enriched = []
+    for ioc in bazaar_iocs:
+        if ioc.get("ioc_type") != "hash":
+            continue
+            
+        val = ioc.get("value")
+        ctx = ioc.get("context", {})
+        tags = set(ctx.get("tags", []))
+        
+        # Overlay CISA intel
+        if val in cisa_lookup:
+            tags.add("CISA-KEV")
+            print(f"  [!] High Priority Match: {val[:16]}... found in CISA KEV")
+            cisa_ctx = cisa_lookup[val].get("context", {})
+            if cisa_ctx.get("malware_family") and ctx.get("malware_family") == "unknown":
+                ctx["malware_family"] = cisa_ctx.get("malware_family")
+                
+        # Overlay OTX intel
+        if val in otx_lookup:
+            tags.add("AlienVault-OTX")
+            tags.update(otx_lookup[val].get("context", {}).get("tags", []))
+            
+        ctx["tags"] = list(tags)
+        ioc["context"] = ctx
+        enriched.append(ioc)
+        
+    return enriched
 
 def run_ingestion(dry_run: bool = False) -> list[dict]:
-    """
-    Full ingestion pipeline:
-    1. Fetch all three feeds
-    2. Normalize to common schema
-    3. Deduplicate across feeds
-    4. Human checkpoint #1
-    5. Return approved IOCs
-
-    Args:
-        dry_run: If True, skips checkpoint and returns all IOCs unapproved.
-    """
+    # ... [Keep your start logging as is] ...
     start = datetime.now(timezone.utc)
     logger.info("="*60)
     logger.info("MAL-INTEL-PIPELINE — INGESTION START")
@@ -47,24 +80,26 @@ def run_ingestion(dry_run: bool = False) -> list[dict]:
     otx_iocs = fetch_otx_pulses()
     bazaar_iocs = fetch_bazaar_recent()
 
-    raw_iocs = cisa_iocs + otx_iocs + bazaar_iocs
-    logger.info(f"Raw IOCs: CISA={len(cisa_iocs)}, OTX={len(otx_iocs)}, Bazaar={len(bazaar_iocs)}, Total={len(raw_iocs)}")
+    raw_total = len(cisa_iocs) + len(otx_iocs) + len(bazaar_iocs)
+    logger.info(f"Raw IOCs: CISA={len(cisa_iocs)}, OTX={len(otx_iocs)}, Bazaar={len(bazaar_iocs)}")
 
-    # Step 2 — Normalize
+    # Step 2 — Normalize separately
     logger.info("\n[2/4] Normalizing IOCs...")
-    normalized = normalize_all(raw_iocs)
+    cisa_norm = normalize_all(cisa_iocs)
+    otx_norm = normalize_all(otx_iocs)
+    bazaar_norm = normalize_all(bazaar_iocs)
 
-    # Step 3 — Deduplicate
-    logger.info("\n[3/4] Deduplicating...")
-    deduped = deduplicate(normalized)
+    # Step 3 — Enrich (Replaces Deduplication/API Filter)
+    logger.info("\n[3/4] Cross-referencing and Enriching...")
+    final_guaranteed_iocs = enrich_bazaar_with_intel(bazaar_norm, cisa_norm, otx_norm)
 
     # Step 4 — Checkpoint or dry run
     if dry_run:
         logger.info("\n[4/4] DRY RUN — skipping checkpoint, returning all IOCs unapproved")
-        final_iocs = deduped
+        final_iocs = final_guaranteed_iocs
     else:
         logger.info("\n[4/4] Human Checkpoint #1...")
-        final_iocs = run_checkpoint(deduped)
+        final_iocs = run_checkpoint(final_guaranteed_iocs)
 
     # Summary
     approved = [i for i in final_iocs if i.get("approved_for_analysis")]
@@ -73,15 +108,14 @@ def run_ingestion(dry_run: bool = False) -> list[dict]:
 
     logger.info("\n" + "="*60)
     logger.info("INGESTION COMPLETE")
-    logger.info(f"  Total IOCs processed : {len(raw_iocs)}")
-    logger.info(f"  After normalization  : {len(normalized)}")
-    logger.info(f"  After deduplication : {len(deduped)}")
+    logger.info(f"  Total IOCs fetched   : {raw_total}")
+    logger.info(f"  Guaranteed Bazaar    : {len(final_guaranteed_iocs)}")
     logger.info(f"  Approved for analysis: {len(approved)}")
     logger.info(f"  Elapsed              : {elapsed:.1f}s")
     logger.info("="*60)
 
     # Save run log
-    save_run_log(raw_iocs, normalized, deduped, final_iocs, elapsed)
+    save_run_log(cisa_iocs + otx_iocs + bazaar_iocs, bazaar_norm, final_guaranteed_iocs, final_iocs, elapsed)
 
     return final_iocs
 

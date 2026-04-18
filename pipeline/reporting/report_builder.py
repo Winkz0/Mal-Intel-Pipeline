@@ -32,9 +32,9 @@ def render_technical_report(synthesis: dict) -> str:
     sigma = s.get("sigma_rule", {})
     report = s.get("technical_report", {})
 
-    sha256 = sample.get("sha256", "unknown")
-    family = sample.get("malware_family", "unknown")
-    analyzed_at = synthesis.get("synthesized_at", "unknown")
+    sha256 = sample.get("sha256") or "unknown"
+    family = sample.get("malware_family") or "unknown"
+    analyzed_at = synthesis.get("synthesized_at") or "unknown"
 
     techniques = ttp.get("techniques", [])
     key_indicators = report.get("key_indicators", [])
@@ -181,9 +181,9 @@ def render_executive_summary(synthesis: dict) -> str:
     yara = s.get("yara_rule", {})
     report = s.get("technical_report", {})
 
-    family = sample.get("malware_family", "unknown")
-    sha256 = sample.get("sha256", "unknown")
-    analyzed_at = synthesis.get("synthesized_at", "unknown")
+    family = sample.get("malware_family") or "unknown"
+    sha256 = sample.get("sha256") or "unknown"
+    analyzed_at = synthesis.get("synthesized_at") or "unknown"
     confidence = ttp.get("confidence", "unknown").upper()
     recommended_actions = report.get("recommended_actions", [])
     

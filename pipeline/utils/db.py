@@ -65,6 +65,8 @@ def update_triage_score(sha256: str, score: int, needs_dynamic: bool):
     conn.commit()
     conn.close()
 
+# NEW: Automatically initialize tables whenever any pipeline script imports this module
+init_db()
+
 if __name__ == "__main__":
-    init_db()
-    print("[+] Pipeline state database initialized.")
+    print("[+] Pipeline state database initialized manually.")

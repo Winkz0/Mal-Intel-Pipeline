@@ -1,29 +1,34 @@
 """
 M5: Sample Acquisition Module
-Pulls approved malware samples from MalwareBazaar (primary) and
-optionally enriches via VirusTotal. Only processes IOCs flagged
-approved_for_analysis=True from checkpoint state.
+Pulls approved malware samples from MalwareBazaar. 
+Only processes IOCs flagged approved_for_analysis=True from checkpoint state.
 """
 
 import os
+import sys
 import json
 import hashlib
 import logging
-import zipfile
+import io
 import requests
+import pyzipper
 from pathlib import Path
 from datetime import datetime, timezone
 import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
-# Paths
+# Resolve the root directory so Python can find the 'pipeline' module
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from pipeline.utils.db import update_status
+
+# Paths
 QUARANTINE_DIR = REPO_ROOT / "samples" / "quarantine"
-CHECKPOINT_DIR = REPO_ROOT / "checkpoints"
+CHECKPOINT_DIR = REPO_ROOT / "checkpoints" # Ensure this matches your ingest.py output
 LOG_DIR = REPO_ROOT / "output" / "logs"
 
-BAZAAR_DOWNLOAD_URL = "https://mb-api.abuse.ch/api/v1/"
 BAZAAR_ZIP_PASSWORD = b"infected"  # Standard MalwareBazaar ZIP password
 
 
@@ -32,11 +37,12 @@ def load_approved_iocs(checkpoint_file: str = None) -> list[dict]:
     Load IOCs approved at checkpoint #1.
     If no checkpoint_file specified, auto-selects the most recent
     checkpoint1_*.json file in the checkpoints directory.
-    Returns only hash-type IOCs with approved_for_analysis=True.
     """
     if checkpoint_file:
         cp_path = CHECKPOINT_DIR / checkpoint_file
     else:
+        # Create dir if it doesn't exist yet
+        CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
         candidates = sorted(CHECKPOINT_DIR.glob("checkpoint1_*.json"), reverse=True)
         if not candidates:
             logger.error(f"No checkpoint1_*.json files found in {CHECKPOINT_DIR}")
@@ -50,7 +56,6 @@ def load_approved_iocs(checkpoint_file: str = None) -> list[dict]:
 
     with open(cp_path, "r") as f:
         data = json.load(f)
-        # Handle both wrapped {"iocs": [...]} and flat [...] checkpoint formats
         all_iocs = data.get("iocs", data) if isinstance(data, dict) else data
 
     approved = [
@@ -65,100 +70,74 @@ def load_approved_iocs(checkpoint_file: str = None) -> list[dict]:
 
 def download_from_bazaar(sha256_hash: str, api_key: str) -> bytes | None:
     """
-    Download a sample ZIP from MalwareBazaar by SHA256.
-    Returns raw ZIP bytes or None on failure.
-    MalwareBazaar packages samples as password-protected ZIPs.
+    Download a sample ZIP from MalwareBazaar using native OS wget.
+    Bypasses Cloudflare JA3/TLS fingerprinting that blocks Python's requests library.
     """
-    payload = {
-        "query": "get_file",
-        "sha256_hash": sha256_hash,
-        "api_key": api_key,
-    }
+    import subprocess
+    import json
+
+    # Construct the exact wget command validated on REMnux
+    cmd = [
+        "wget",
+        "-q",  # Quiet mode: suppress progress bars to keep the byte stream clean
+        "--header", f"Auth-Key: {api_key}",
+        "--post-data", f"query=get_file&sha256_hash={sha256_hash}",
+        "https://mb-api.abuse.ch/api/v1/",
+        "-O", "-"  # Output directly to standard out
+    ]
 
     try:
-        resp = requests.post(
-            BAZAAR_DOWNLOAD_URL,
-            data=payload,
-            timeout=60,
-            stream=True
-        )
-        resp.raise_for_status()
+        # Execute wget and capture the raw binary output directly into memory
+        result = subprocess.run(cmd, capture_output=True, check=True)
+        content = result.stdout
 
-        # MalwareBazaar returns JSON error responses for unknown hashes
-        content_type = resp.headers.get("Content-Type", "")
-        if "application/json" in content_type:
-            err = resp.json()
-            logger.warning(f"Bazaar API error for {sha256_hash}: {err.get('query_status')}")
-            return None
-
-        return resp.content
-
-    except requests.RequestException as e:
-        logger.error(f"Download failed for {sha256_hash}: {e}")
-        return None
-
-
-def download_from_virustotal(sha256_hash: str, api_key: str) -> bytes | None:
-    """
-    Download a sample from VirusTotal by SHA256.
-    Requires VT account with download privileges (free tier supports this).
-    Returns raw file bytes or None on failure.
-    """
-    url = f"https://www.virustotal.com/api/v3/files/{sha256_hash}/download"
-    headers = {"x-apikey": api_key}
-
-    try:
-        resp = requests.get(url, headers=headers, timeout=60, stream=True)
-        
-        if resp.status_code == 401:
-            logger.error("VT API key invalid or unauthorized")
-            return None
-        elif resp.status_code == 404:
-            logger.warning(f"Sample not found on VT: {sha256_hash[:16]}...")
-            return None
-        elif resp.status_code == 429:
-            logger.warning("VT rate limit hit")
-            return None
+        # Verify we got the ZIP payload (starts with 'PK')
+        if content.startswith(b"PK"):
+            return content
             
-        resp.raise_for_status()
-        return resp.content
-
-    except requests.RequestException as e:
-        logger.error(f"VT download failed for {sha256_hash}: {e}")
+        # If it's not a ZIP, read the JSON error message
+        try:
+            err = json.loads(content.decode('utf-8', errors='ignore'))
+            logger.warning(f"Bazaar API error for {sha256_hash}: {err.get('query_status')}")
+        except Exception:
+            logger.error(f"Unknown response format from Bazaar for {sha256_hash}")
+            
         return None
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Wget execution failed for {sha256_hash}: {e}")
+        # If wget fails, stderr might contain useful hints (like DNS or SSL errors)
+        if e.stderr:
+            logger.error(f"Wget error output: {e.stderr.decode('utf-8', errors='ignore')}")
+        return None
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Curl execution failed for {sha256_hash}: {e}")
+        return None
+
 
 def extract_sample_from_zip(zip_bytes: bytes, sha256_hash: str) -> bytes | None:
     """
-    Extract the malware binary from the password-protected ZIP.
-    MalwareBazaar always uses 'infected' as the ZIP password.
-    Returns raw sample bytes or None on failure.
+    Extract the malware binary from the AES-encrypted ZIP using pyzipper.
     """
-    import io
     try:
-        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        with pyzipper.AESZipFile(io.BytesIO(zip_bytes)) as zf:
             names = zf.namelist()
             if not names:
                 logger.error(f"Empty ZIP for {sha256_hash}")
                 return None
-
-            # Extract first file in archive (always the sample)
-            sample_bytes = zf.read(names[0], pwd=BAZAAR_ZIP_PASSWORD)
+            
+            zf.pwd = BAZAAR_ZIP_PASSWORD
+            sample_bytes = zf.read(names[0])
             logger.debug(f"Extracted {names[0]} from ZIP ({len(sample_bytes)} bytes)")
             return sample_bytes
-
-    except zipfile.BadZipFile as e:
-        logger.error(f"Bad ZIP for {sha256_hash}: {e}")
-        return None
-    except RuntimeError as e:
-        logger.error(f"ZIP extraction error for {sha256_hash}: {e}")
+    except Exception as e:
+        logger.error(f"Failed to extract {sha256_hash}: {e}")
         return None
 
 
 def verify_hash(sample_bytes: bytes, expected_sha256: str) -> bool:
-    """
-    SHA256 integrity check post-extraction.
-    If this fails, the sample is corrupted or we got the wrong file.
-    """
+    """SHA256 integrity check post-extraction."""
     actual = hashlib.sha256(sample_bytes).hexdigest().lower()
     expected = expected_sha256.lower()
 
@@ -166,33 +145,28 @@ def verify_hash(sample_bytes: bytes, expected_sha256: str) -> bool:
         logger.error(f"Hash mismatch! Expected: {expected} | Got: {actual}")
         return False
 
-    logger.info(f"Hash verified: {actual}")
     return True
 
 
 def write_quarantine(sample_bytes: bytes, ioc: dict) -> Path | None:
     """
-    Write sample binary + JSON sidecar to quarantine directory.
-    Naming convention: <sha256>.<ext> + <sha256>.meta.json
+    Write sample binary + JSON sidecar to quarantine directory securely.
     """
     sha256 = ioc.get("value", "unknown")
     file_info = ioc.get("file_info", {})
     file_ext = file_info.get("type", "bin").lower().strip(".")
 
-    # Sanitize extension
     if not file_ext or len(file_ext) > 10:
         file_ext = "bin"
 
-    # NEW: Change path to a zip file instead of the raw extension
     sample_path = QUARANTINE_DIR / f"{sha256}.zip"
     meta_path = QUARANTINE_DIR / f"{sha256}.meta.json"
 
     QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # NEW: Write sample securely using pyzipper
+    # Secure repackaging
     with pyzipper.AESZipFile(sample_path, 'w', compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as zf:
         zf.setpassword(b'infected')
-        # We store the file inside the zip with its original identified extension
         zf.writestr(f"{sha256}.{file_ext}", sample_bytes)
 
     # Write sidecar metadata
@@ -216,7 +190,7 @@ def write_quarantine(sample_bytes: bytes, ioc: dict) -> Path | None:
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)
 
-    # NEW: Log to the database
+    # Log to the database pipeline
     update_status(sha256, 'ACQUIRED', meta.get("malware_family", "unknown"))
 
     logger.info(f"Quarantined and Defanged: {sample_path.name}")
@@ -225,18 +199,13 @@ def write_quarantine(sample_bytes: bytes, ioc: dict) -> Path | None:
 
 def acquire_approved_samples(api_key: str, checkpoint_file: str = None) -> list[dict]:
     """
-    Main acquisition loop.
-    Loads approved IOCs → downloads → verifies → quarantines.
-    Returns acquisition log entries for each processed sample.
+    Main threaded acquisition loop.
     """
     approved = load_approved_iocs(checkpoint_file)
     if not approved:
         logger.warning("No approved IOCs to acquire. Run checkpoint #1 first.")
         return []
 
-    acquisition_log = []
-
-    # NEW: Extract the single-sample processing logic
     def process_ioc(ioc):
         sha256 = ioc.get("value", "")
         if not sha256 or len(sha256) != 64:
@@ -250,7 +219,6 @@ def acquire_approved_samples(api_key: str, checkpoint_file: str = None) -> list[
 
         logger.info(f"Acquiring: {sha256[:16]}... ({ioc.get('context', {}).get('malware_family', 'unknown')})")
 
-        vt_key = os.getenv("VIRUSTOTAL_API_KEY")
         zip_bytes = download_from_bazaar(sha256, api_key)
         
         if zip_bytes:
@@ -258,13 +226,7 @@ def acquire_approved_samples(api_key: str, checkpoint_file: str = None) -> list[
             if not sample_bytes:
                 return {"sha256": sha256, "status": "extraction_failed"}
         else:
-            logger.info(f"Bazaar failed, trying VirusTotal for {sha256[:16]}...")
-            if not vt_key:
-                logger.error("VIRUSTOTAL_API_KEY not set, cannot fall back to VT")
-                return {"sha256": sha256, "status": "download_failed"}
-            sample_bytes = download_from_virustotal(sha256, vt_key)
-            if not sample_bytes:
-                return {"sha256": sha256, "status": "download_failed"}
+            return {"sha256": sha256, "status": "download_failed"}
 
         if not verify_hash(sample_bytes, sha256):
             return {"sha256": sha256, "status": "hash_mismatch"}
@@ -283,7 +245,6 @@ def acquire_approved_samples(api_key: str, checkpoint_file: str = None) -> list[
 
     acquisition_log = []
 
-    # NEW: ThreadPoolExecutor for concurrent downloads
     print(f"[*] Starting parallel acquisition of {len(approved)} samples...")
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         futures = [executor.submit(process_ioc, ioc) for ioc in approved]
@@ -296,7 +257,6 @@ def acquire_approved_samples(api_key: str, checkpoint_file: str = None) -> list[
 
 
 def save_acquisition_log(log: list[dict]) -> None:
-    """Write acquisition run log to output/logs/."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     log_path = LOG_DIR / f"acquisition_{ts}.json"
@@ -306,19 +266,26 @@ def save_acquisition_log(log: list[dict]) -> None:
 
 
 if __name__ == "__main__":
-    import sys
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
     )
 
     from dotenv import load_dotenv
-    load_dotenv(REPO_ROOT / "config" / "secrets.env")
+    
+    # Force override to bypass any cached environment variables
+    load_dotenv(REPO_ROOT / "config" / "secrets.env", override=True)
+    load_dotenv(REPO_ROOT / "config" / ".env", override=True)
 
     bazaar_key = os.getenv("MALWAREBAZAAR_API_KEY")
     if not bazaar_key:
-        logger.error("MALWAREBAZAAR_API_KEY not set in config/.env")
+        logger.error("MALWAREBAZAAR_API_KEY not set in config/.env or secrets.env")
         sys.exit(1)
+        
+    # Strip any accidental formatting from the text file
+    # bazaar_key = bazaar_key.strip().strip('"\'')
+    
+    print(f"[*] Pipeline is authenticating with key ending in: ...{bazaar_key[-4:]}")
 
     log = acquire_approved_samples(bazaar_key)
 

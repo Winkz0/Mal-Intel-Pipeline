@@ -21,6 +21,42 @@ def load_db_data():
     conn.close()
     return df
 
+@st.cache_data(ttl=3600)  # Caches in RAM for 1 hour to prevent disk I/O bottlenecks
+def load_corpus_data():
+    """Extract pivot points from all synthesis files for cross-sample comparison."""
+    corpus = []
+    if not REPORTS_DIR.exists():
+        return pd.DataFrame()
+        
+    for syn_path in REPORTS_DIR.glob("*.synthesis.json"):
+        try:
+            with open(syn_path, 'r', encoding='utf-8') as f:
+                raw = json.load(f)
+                syn = raw.get("synthesis", raw)
+                sample = raw.get("sample", {})
+                
+                # Extract baseline identifiers
+                sha256 = sample.get("sha256", "Unknown")
+                family = sample.get("malware_family") or "Unknown"
+                
+                # Extract MITRE Techniques for clustering
+                ttp = syn.get("ttp_mapping", {})
+                techniques = [t.get("id") for t in ttp.get("techniques", []) if t.get("id")]
+                
+                # Extract Confidence
+                confidence = ttp.get("confidence", "unknown").upper()
+                
+                corpus.append({
+                    "sha256": sha256,
+                    "Family": family.title(),
+                    "Techniques": techniques,
+                    "Confidence": confidence
+                })
+        except Exception as e:
+            continue
+            
+    return pd.DataFrame(corpus)
+
 def update_status(sha256, new_status):
     """Update sample status directly from the dashboard."""
     from pipeline.utils.db import update_status as db_update
@@ -29,7 +65,7 @@ def update_status(sha256, new_status):
 
 def main():
     st.sidebar.title("SOC Triage Queue")
-    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Rule & Synthesis Review"])
+    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Rule & Synthesis Review", "Corpus Analytics"])
 
     df = load_db_data()
 
@@ -80,7 +116,10 @@ def main():
             syn_path = REPORTS_DIR / f"{selected_sha}.synthesis.json"
             if syn_path.exists():
                 with open(syn_path, 'r') as f:
-                    syn_data = json.load(f)
+                    raw_data = json.load(f)
+                
+                # THE FIX 1: Open the nested "synthesis" dictionary
+                syn_data = raw_data.get("synthesis", raw_data)
                 
                 # Layout: 2 Columns for clean reading
                 col1, col2 = st.columns([1, 1])
@@ -95,11 +134,13 @@ def main():
                         
                 with col2:
                     st.markdown("### Drafted YARA Rule")
-                    yara_rule = syn_data.get("yara_rule", {}).get("rule_text", "No YARA rule generated.")
+                    # THE FIX 2: Claude used the key "rule" instead of "rule_text"
+                    yara_rule = syn_data.get("yara_rule", {}).get("rule", "No YARA rule generated.")
                     st.code(yara_rule, language="yara")
                     
                     st.markdown("### Drafted Sigma Rule")
-                    sigma_rule = syn_data.get("sigma_rule", {}).get("rule_text", "No Sigma rule generated.")
+                    # THE FIX 2: Claude used the key "rule" instead of "rule_text"
+                    sigma_rule = syn_data.get("sigma_rule", {}).get("rule", "No Sigma rule generated.")
                     st.code(sigma_rule, language="yaml")
             else:
                 st.error("Synthesis file not found on disk.")
@@ -117,6 +158,49 @@ def main():
             with col_b:
                 if st.button("❌ Reject (Needs Revision)"):
                     update_status(selected_sha, 'ANALYZED') # Push back to analysis state
+
+    elif page == "Corpus Analytics":
+        st.title("Corpus Analytics & Threat Clustering")
+        
+        corpus_df = load_corpus_data()
+        
+        if corpus_df.empty:
+            st.info("No synthesis reports found to analyze.")
+            return
+            
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("Malware Family Distribution")
+            family_counts = corpus_df['Family'].value_counts().reset_index()
+            family_counts.columns = ['Family', 'Count']
+            st.bar_chart(family_counts.set_index('Family'))
+            
+        with col2:
+            st.subheader("Top MITRE ATT&CK Techniques")
+            # Flatten the list of techniques across all samples
+            all_techs = [tech for sublist in corpus_df['Techniques'].tolist() for tech in sublist]
+            if all_techs:
+                tech_counts = pd.Series(all_techs).value_counts().head(10).reset_index()
+                tech_counts.columns = ['Technique ID', 'Frequency']
+                st.dataframe(tech_counts, use_container_width=True, hide_index=True)
+            else:
+                st.write("No techniques mapped yet.")
+
+        st.divider()
+        st.subheader("Cross-Sample Pivot Engine")
+        st.write("Find overlapping infrastructure, techniques, or behaviors across the corpus.")
+        
+        # Explode the DataFrame so each technique gets its own row for easy filtering
+        exploded_df = corpus_df.explode('Techniques')
+        
+        target_tech = st.selectbox("Select a MITRE Technique to pivot on:", 
+                                   options=["All"] + sorted(list(set(all_techs))) if all_techs else ["None"])
+        
+        if target_tech != "All" and target_tech != "None":
+            cluster = exploded_df[exploded_df['Techniques'] == target_tech]
+            st.success(f"Found {len(cluster)} sample(s) sharing technique **{target_tech}**")
+            st.dataframe(cluster[['sha256', 'Family', 'Confidence']], use_container_width=True, hide_index=True)
 
 if __name__ == "__main__":
     main()

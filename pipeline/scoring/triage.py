@@ -32,46 +32,35 @@ HIGH_RISK_TACTICS = {
 }
 
 def calculate_score(analysis: dict) -> dict:
-    """Calculates a triage score based on static analysis artifacts."""
+    """
+    Calculates a triage score (0-100) based on static analysis indicators.
+    Scores >= 50 flag the sample for dynamic detonation.
+    """
     score = 0
-    reasons = []
-
-    capa = analysis.get("capa_result", {})
     
-    # 1. Score Capabilities
-    capabilities = capa.get("capabilities", [])
-    for cap in capabilities:
-        cap_lower = cap.lower()
-        for risk_cap, points in HIGH_RISK_CAPABILITIES.items():
-            if risk_cap in cap_lower:
-                score += points
-                reasons.append(f"Capability (+{points}): {cap}")
-                
-    # 2. Score ATT&CK Tactics
-    attack_ttps = capa.get("attack", [])
-    seen_tactics = set()
-    for ttp in attack_ttps:
-        tactic = ttp.get("tactic", "")
-        # Only score a tactic once per sample to prevent inflation
-        if tactic in HIGH_RISK_TACTICS and tactic not in seen_tactics:
-            points = HIGH_RISK_TACTICS[tactic]
-            score += points
-            seen_tactics.add(tactic)
-            reasons.append(f"Tactic (+{points}): {tactic}")
-
-    # 3. Score String Obfuscation
-    floss = analysis.get("floss_result", {})
-    summary = floss.get("summary", {})
-    total_static = summary.get("total_static", 0)
-    notable = len(summary.get("notable", []))
+    # 1. Capa Capability Scoring (High Weight)
+    capa = analysis.get("capa_result", {}).get("summary", {})
+    # 10 points for every mapped MITRE ATT&CK TTP
+    score += capa.get("total_attack_ttps", 0) * 10
+    # 2 points for every general malicious capability
+    score += capa.get("total_capabilities", 0) * 2
     
-    # If the file has very few static strings but high capabilities, it's heavily packed
-    if total_static < 50 and len(capabilities) > 5:
-        score += 25
-        reasons.append("Anomaly (+25): Low static strings vs high capability (Packed/Obfuscated)")
-
+    # 2. FLOSS String Extraction (Medium Weight)
+    floss = analysis.get("floss_result", {}).get("summary", {})
+    # 5 points for every notable/obfuscated string matched
+    notable_strings = floss.get("notable", [])
+    score += len(notable_strings) * 5
+    
+    # 3. PE Header Analysis (Medium Weight)
+    pe = analysis.get("pefile_result", {}).get("summary", {})
+    suspicious_imports = pe.get("suspicious_imports", [])
+    if suspicious_imports:
+        score += len(suspicious_imports) * 5
+        
+    # Cap the maximum score at 100
+    final_score = min(score, 100)
+    
     return {
-        "score": score,
-        "reasons": reasons,
-        "needs_dynamic": score >= 50  # Our threshold for detonation
+        "score": final_score,
+        "needs_dynamic": final_score >= 50
     }
