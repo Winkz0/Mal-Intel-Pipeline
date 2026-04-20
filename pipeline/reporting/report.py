@@ -113,7 +113,7 @@ def generate_reports(sha256: str) -> None:
 
 
 def get_pending_reports() -> list[str]:
-    return get_samples_by_status('APPROVED')
+    return get_samples_by_status('SYNTHESIZED')
 
 
 if __name__ == "__main__":

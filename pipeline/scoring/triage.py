@@ -34,30 +34,36 @@ HIGH_RISK_TACTICS = {
 def calculate_score(analysis: dict) -> dict:
     """
     Calculates a triage score (0-100) based on static analysis indicators.
-    Scores >= 50 flag the sample for dynamic detonation.
+    Mapped perfectly to the normalized JSON schema.
     """
     score = 0
     
-    # 1. Capa Capability Scoring (High Weight)
-    capa = analysis.get("capa_result", {}).get("summary", {})
-    # 10 points for every mapped MITRE ATT&CK TTP
-    score += capa.get("total_attack_ttps", 0) * 10
-    # 2 points for every general malicious capability
-    score += capa.get("total_capabilities", 0) * 2
+    # 1. Open the parent block
+    static_analysis = analysis.get("static_analysis", {})
     
-    # 2. FLOSS String Extraction (Medium Weight)
-    floss = analysis.get("floss_result", {}).get("summary", {})
-    # 5 points for every notable/obfuscated string matched
-    notable_strings = floss.get("notable", [])
+    # 2. Capa Scoring (Safely handles missing Capa blocks if a tool fails)
+    capa = static_analysis.get("capa", {})
+    # Fallback in case Capa is flattened or nested
+    capa_summary = capa.get("summary", capa) 
+    capa_ttps = capa_summary.get("total_attack_ttps", 0)
+    score += capa_ttps * 10
+    score += capa_summary.get("total_capabilities", 0) * 2
+    
+    # 3. FLOSS Scoring
+    floss = static_analysis.get("floss", {})
+    # Directly accesses the flattened list
+    notable_strings = floss.get("notable_strings", [])
     score += len(notable_strings) * 5
     
-    # 3. PE Header Analysis (Medium Weight)
-    pe = analysis.get("pefile_result", {}).get("summary", {})
+    # 4. PEfile Scoring
+    pe = static_analysis.get("pefile", {})
+    # Directly accesses the flattened list
     suspicious_imports = pe.get("suspicious_imports", [])
-    if suspicious_imports:
-        score += len(suspicious_imports) * 5
-        
-    # Cap the maximum score at 100
+    score += len(suspicious_imports) * 5
+    
+    # DEBUG: Print exactly what the scoring engine found
+    print(f"      [DEBUG] Triage Engine -> Capa TTPs: {capa_ttps} | Notable Strings: {len(notable_strings)} | Suspicious Imports: {len(suspicious_imports)}")
+    
     final_score = min(score, 100)
     
     return {

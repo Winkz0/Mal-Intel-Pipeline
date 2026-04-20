@@ -65,7 +65,7 @@ def update_status(sha256, new_status):
 
 def main():
     st.sidebar.title("SOC Triage Queue")
-    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Rule & Synthesis Review", "Corpus Analytics"])
+    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Intelligence Library", "Corpus Analytics"])
 
     df = load_db_data()
 
@@ -97,20 +97,20 @@ def main():
             hide_index=True
         )
 
-    elif page == "Rule & Synthesis Review":
-        st.title("Checkpoint Review")
+    elif page == "Intelligence Library":
+        st.title("Intelligence Library")
         
-        # Filter for items that have been synthesized but not yet fully approved/reported
-        review_queue = df[df['status'] == 'SYNTHESIZED']['sha256'].tolist()
+        # Pull any sample that has successfully passed Phase 4
+        view_queue = df[df['status'].isin(['SYNTHESIZED', 'REPORTED'])]['sha256'].tolist()
         
-        if not review_queue:
-            st.info("No samples currently pending review.")
+        if not view_queue:
+            st.info("No reports available to view yet.")
             return
             
-        selected_sha = st.sidebar.selectbox("Select Sample to Review", review_queue)
+        selected_sha = st.sidebar.selectbox("Select Report to View", view_queue)
         
         if selected_sha:
-            st.subheader(f"Reviewing: {selected_sha[:16]}...")
+            st.subheader(f"Viewing: {selected_sha[:16]}...")
             
             # Load Synthesis JSON
             syn_path = REPORTS_DIR / f"{selected_sha}.synthesis.json"
@@ -118,7 +118,7 @@ def main():
                 with open(syn_path, 'r') as f:
                     raw_data = json.load(f)
                 
-                # THE FIX 1: Open the nested "synthesis" dictionary
+                # Open the nested "synthesis" dictionary
                 syn_data = raw_data.get("synthesis", raw_data)
                 
                 # Layout: 2 Columns for clean reading
@@ -134,12 +134,10 @@ def main():
                         
                 with col2:
                     st.markdown("### Drafted YARA Rule")
-                    # THE FIX 2: Claude used the key "rule" instead of "rule_text"
                     yara_rule = syn_data.get("yara_rule", {}).get("rule", "No YARA rule generated.")
                     st.code(yara_rule, language="yara")
                     
                     st.markdown("### Drafted Sigma Rule")
-                    # THE FIX 2: Claude used the key "rule" instead of "rule_text"
                     sigma_rule = syn_data.get("sigma_rule", {}).get("rule", "No Sigma rule generated.")
                     st.code(sigma_rule, language="yaml")
             else:
