@@ -214,6 +214,10 @@ config/secrets.yaml
 config/secrets.json
 .env
 
+# RAG vector store
+data/chromadb/
+
+
 # Malware samples - NEVER commit these
 samples/quarantine/*
 samples/analyzed/*
