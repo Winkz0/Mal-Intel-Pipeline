@@ -16,10 +16,10 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 # 2. Define the exact targets
 DB_PATH = REPO_ROOT / "pipeline.db"
+
+# ONLY delete the heavy, raw analysis data. Keep the finished intelligence!
 TARGET_DIRS = [
-    REPO_ROOT / "output" / "analysis",
-    REPO_ROOT / "output" / "reports",
-    REPO_ROOT / "output" / "rules"
+    REPO_ROOT / "output" / "analysis"
 ]
 QUARANTINE_DIR = REPO_ROOT / "samples" / "quarantine"
 

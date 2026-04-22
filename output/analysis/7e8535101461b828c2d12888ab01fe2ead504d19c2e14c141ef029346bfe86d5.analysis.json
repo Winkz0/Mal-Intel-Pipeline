@@ -1,0 +1,76 @@
+{
+  "schema_version": "1.0",
+  "analyzed_at": "2026-04-22T12:49:20.128944+00:00",
+  "sample": {
+    "sha256": "7e8535101461b828c2d12888ab01fe2ead504d19c2e14c141ef029346bfe86d5",
+    "md5": "29e9ef27bcd8e56f0007533d1f8b6cbd",
+    "sha1": "f03ae6c07fccf11bccea3b91aa7eb8814eb601b5",
+    "file_name": "payload.elf",
+    "file_type": "elf",
+    "file_size_bytes": 250,
+    "malware_family": "ConnectBack",
+    "tags": [
+      "ConnectBack"
+    ],
+    "source": "malwarebazaar"
+  },
+  "static_analysis": {
+    "diec": {
+      "success": true,
+      "file_type": "ELF64",
+      "architecture": null,
+      "compiler": null,
+      "packer": null,
+      "linker": null,
+      "is_packed": false,
+      "error": null
+    },
+    "pefile": {
+      "success": false,
+      "is_pe": false,
+      "architecture": null,
+      "compile_timestamp": null,
+      "imphash": null,
+      "sections": [],
+      "imports": [],
+      "exports": [],
+      "high_entropy_sections": [],
+      "suspicious_imports": [],
+      "error": "Not a PE file \u2014 skipping pefile analysis"
+    },
+    "floss": {
+      "success": true,
+      "total_static": 7,
+      "total_stack": 0,
+      "total_decoded": 0,
+      "notable_strings": [],
+      "all_strings": [
+        "j\"AZj",
+        "AYPj)X",
+        "Zj*X",
+        "Wj#Xj",
+        "YY_H",
+        "j<Xj",
+        "^j~Z"
+      ],
+      "error": null
+    },
+    "capa": {
+      "success": false,
+      "capabilities": [],
+      "attack_ttps": [],
+      "mbc_behaviors": [],
+      "total_capabilities": 0,
+      "total_attack_ttps": 0,
+      "error": "Capa exited with code 18: ERROR    capa: --------------------------------------------------------------------------------                                                                                                      helpers.py:329\nERROR    capa:  Input file does not appear to target a supported OS.                                                                                                                                 helpers.py:330\nERROR    capa:                                                              "
+    }
+  },
+  "ioc_candidates": {
+    "ips": [],
+    "urls": [],
+    "domains": [],
+    "registry_keys": [],
+    "commands": []
+  },
+  "analysis_notes": ""
+}
