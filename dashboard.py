@@ -65,7 +65,7 @@ def update_status(sha256, new_status):
 
 def main():
     st.sidebar.title("SOC Triage Queue")
-    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Intelligence Library", "Corpus Analytics"])
+    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Intelligence Library", "Corpus Analytics", "Corpus Assistant"])
 
     df = load_db_data()
 
@@ -199,6 +199,40 @@ def main():
             cluster = exploded_df[exploded_df['Techniques'] == target_tech]
             st.success(f"Found {len(cluster)} sample(s) sharing technique **{target_tech}**")
             st.dataframe(cluster[['sha256', 'Family', 'Confidence']], use_container_width=True, hide_index=True)
+
+    elif page == "Corpus Assistant":
+        st.title("RAG Analyst Assistant")
+        st.caption("Ask questions about your malware corpus. Answers are grounded in your actual analysis data.")
+
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            question = st.text_input("Ask your corpus:", placeholder="e.g., Which samples use process injection?")
+        with col2:
+            family_filter = st.text_input("Family filter:", placeholder="(optional)")
+
+        if st.button("Ask", type="primary") and question:
+            with st.spinner("Searching corpus and generating answer..."):
+                from pipeline.rag.assistant import ask
+                result = ask(
+                    question=question,
+                    family=family_filter or None,
+                    verbose=False,
+                )
+
+            if result["error"]:
+                st.error(f"Error: {result['error']}")
+            else:
+                st.markdown("### Answer")
+                st.markdown(result["answer"])
+
+                sources = result["sources"]
+                if sources:
+                    with st.expander(f"Sources ({len(sources)} chunks)"):
+                        for s in sources:
+                            st.markdown(
+                                f"- **{s.get('doc_type','?')}/{s.get('section','?')}** — "
+                                f"{s.get('family','?')} (`{s.get('sha256','?')[:16]}...`)"
+                            )
 
 if __name__ == "__main__":
     main()
