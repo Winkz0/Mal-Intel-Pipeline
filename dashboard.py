@@ -65,7 +65,7 @@ def update_status(sha256, new_status):
 
 def main():
     st.sidebar.title("SOC Triage Queue")
-    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Intelligence Library", "Corpus Analytics", "Corpus Assistant"])
+    page = st.sidebar.radio("Navigation", ["Pipeline Status", "Intelligence Library", "Corpus Analytics", "Corpus Assistant", "Threat Graph"])
 
     df = load_db_data()
 
@@ -233,6 +233,43 @@ def main():
                                 f"- **{s.get('doc_type','?')}/{s.get('section','?')}** — "
                                 f"{s.get('family','?')} (`{s.get('sha256','?')[:16]}...`)"
                             )
+    elif page == "Threat Graph":
+        st.title("Threat Relationship Graph")
+        st.caption("Interactive network showing relationships between analyzed samples based on delta overlap scores.")
 
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            min_score = st.slider("Minimum overlap score", min_value=1, max_value=50, value=5)
+            if st.button("Generate Graph", type="primary"):
+                with st.spinner("Building threat graph..."):
+                    from pipeline.delta_analysis.threat_graph import load_all_deltas, build_graph_data, render_graph
+
+                    deltas = load_all_deltas()
+                    if not deltas:
+                        st.error("No delta reports found. Run delta analysis first.")
+                    else:
+                        graph_data = build_graph_data(deltas, min_score=min_score)
+                        node_count = len(graph_data["nodes"])
+                        edge_count = len(graph_data["edges"])
+
+                        if node_count == 0:
+                            st.warning("No relationships above threshold. Try lowering the minimum score.")
+                        else:
+                            graph_path = render_graph(graph_data)
+                            st.session_state["graph_path"] = str(graph_path)
+                            st.session_state["graph_stats"] = {"nodes": node_count, "edges": edge_count}
+
+        with col2:
+            if "graph_path" in st.session_state:
+                stats = st.session_state["graph_stats"]
+                st.markdown(f"**{stats['nodes']} samples · {stats['edges']} relationships**")
+
+                graph_path = Path(st.session_state["graph_path"])
+                if graph_path.exists():
+                    with open(graph_path, "r", encoding="utf-8") as f:
+                        html_content = f.read()
+                    st.components.v1.html(html_content, height=720, scrolling=True)
+            else:
+                st.info("Click 'Generate Graph' to build the threat relationship network.")
 if __name__ == "__main__":
     main()

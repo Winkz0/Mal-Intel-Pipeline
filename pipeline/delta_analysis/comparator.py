@@ -43,10 +43,10 @@ def extract_features(analysis: dict) -> dict:
 
     return {
         "sha256": sample.get("sha256", "unknown"),
-        "family": sample.get("malware_family", "unknown"),
-        "file_type": diec.get("file_type") or sample.get("file_type", "unknown"),
-        "compiler": diec.get("compiler"),
-        "packer": diec.get("packer"),
+        "family": sample.get("malware_family") or "unknown",
+        "file_type": diec.get("file_type") or sample.get("file_type") or "unknown",
+        "compiler": diec.get("compiler") or None,
+        "packer": diec.get("packer") or None,
         "is_packed": diec.get("is_packed", False),
         "architecture": pe.get("architecture") or diec.get("architecture"),
         "imphash": pe.get("imphash"),

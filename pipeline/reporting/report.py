@@ -13,6 +13,8 @@ import json
 import logging
 import argparse
 from pathlib import Path
+from pipeline.rag.indexer import index_corpus
+from pipeline.delta_analysis.delta import generate_delta
 import os
 
 # 1. RESOLVE PATH FIRST
@@ -109,8 +111,23 @@ def generate_reports(sha256: str) -> None:
             os.remove(meta_path)
             print(f"  [+] Storage cleanup  : Removed {meta_path.name}")
         except Exception as e:
+            import traceback
             print(f"  [!] Storage cleanup  : Failed to remove {meta_path.name} ({e})")
+            traceback.print_exec()
 
+        # Incremental RAG reindex — keeps vector store current
+    try:
+        count = index_corpus()
+        print(f"  [+] RAG reindex      : {count} chunks indexed")
+    except Exception as e:
+        print(f"  [!] RAG reindex      : Failed ({e})")
+
+# Auto-run delta analysis against corpus
+    try:
+        generate_delta(actual_sha256)
+        print(f"  [+] Delta analysis   : Complete")
+    except Exception as e:
+        print(f"  [!] Delta analysis   : Failed ({e})")
 
 def get_pending_reports() -> list[str]:
     return get_samples_by_status('SYNTHESIZED')
