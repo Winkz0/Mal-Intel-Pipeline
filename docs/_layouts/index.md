@@ -5,7 +5,7 @@ title: Home
 
 # Mal-Intel Pipeline
 
-Malware intelligence research, static analysis, and detection engineering.
+Stay Vigilant.
 
 An automated, human-in-the-loop pipeline that ingests threat intelligence feeds, performs static analysis on malware samples, and generates analyst reports with YARA/Sigma detection rules — augmented by Claude AI at the synthesis layer.
 
@@ -19,8 +19,6 @@ An automated, human-in-the-loop pipeline that ingests threat intelligence feeds,
 ### [{{ post.title }}]({{ post.url | prepend: site.baseurl }})
 <small>{{ post.date | date: "%B %d, %Y" }}</small>
 {% if post.tags.size > 0 %}<small> · {% for tag in page.tags %}<code>{{ tag }}</code> {% endfor %}</small>{% endif %}
-
-{{ post.excerpt }}
 
 ---
 {% endfor %}
