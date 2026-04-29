@@ -43,7 +43,7 @@ def bundle_for_sandbox():
 
     success_count = 0
     for sha256, family, score in flagged:
-        bundle_dir = EXPORT_DIR / f"{sha256}_score{score}_{family.replace(' ', '')}"
+        bundle_dir = EXPORT_DIR / f"{sha256}_score{score}_{(family or 'unknown').replace(' ', '')}"
         
         if bundle_dir.exists():
             continue # Already bundled previously

@@ -217,6 +217,8 @@ config/secrets.json
 # RAG vector store
 data/chromadb/
 
+# Pipeline DB
+pipeline.db
 
 # Malware samples - NEVER commit these
 samples/quarantine/*
@@ -232,6 +234,8 @@ output/rules/sigma/*
 output/logs/*
 output/logs/cache/
 output/graphs
+output/analysis/
+output/dynamic_queue/
 !output/reports/.gitkeep
 !output/rules/yara/.gitkeep
 !output/rules/sigma/.gitkeep
