@@ -1,0 +1,15 @@
+---
+layout: default
+---
+
+<small>{{ page.date | date: "%B %d, %Y" }}</small>
+{% if page.tags.size > 0 %}
+<small> · {% for tag in page.tags %}<code>{{ tag }}</code> {% endfor %}</small>
+{% endif %}
+
+<h1>{{ page.title }}</h1>
+
+{{ content }}
+
+<hr>
+<p><a href="{{ site.baseurl }}/">← Back to all posts</a></p>

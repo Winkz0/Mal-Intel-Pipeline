@@ -1,0 +1,23 @@
+title: Mal-Intel Pipeline
+description: Malware intelligence research, static analysis, and detection engineering
+author: Dylan
+baseurl: /Mal-Intel-Pipeline
+url: https://winkz0.github.io
+
+# Theme
+remote_theme: pages-themes/hacker@v0.2.0
+plugins:
+  - jekyll-remote-theme
+
+# Build
+markdown: kramdown
+highlighter: rouge
+permalink: /:year/:month/:title/
+
+# Collections
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"
