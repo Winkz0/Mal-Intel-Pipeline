@@ -235,6 +235,7 @@ output/logs/*
 output/logs/cache/
 output/graphs
 output/analysis/
+output/stix/
 output/dynamic_queue/
 !output/reports/.gitkeep
 !output/rules/yara/.gitkeep

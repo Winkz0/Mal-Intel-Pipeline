@@ -15,6 +15,7 @@ import argparse
 from pathlib import Path
 from pipeline.rag.indexer import index_corpus
 from pipeline.delta_analysis.delta import generate_delta
+from pipeline.export.stix_export import export_stix
 import os
 
 # 1. RESOLVE PATH FIRST
@@ -128,6 +129,15 @@ def generate_reports(sha256: str) -> None:
         print(f"  [+] Delta analysis   : Complete")
     except Exception as e:
         print(f"  [!] Delta analysis   : Failed ({e})")
+    
+    # STIX 2.1 export
+    try:
+        stix_path = export_stix(actual_sha256)
+        if stix_path:
+            print(f"  [+] STIX export      : {stix_path.name}")
+    except Exception as e:
+        print(f"  [!] STIX export      : Failed ({e})")
+   
 
 def get_pending_reports() -> list[str]:
     return get_samples_by_status('SYNTHESIZED')
