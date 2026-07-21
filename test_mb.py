@@ -1,6 +1,6 @@
 import requests
 
-API_KEY = "e39e2b619fd686f43243d2d7ec8c42b897aff0cb51901772"
+API_KEY = "APIKEY"
 # We will use the hash from your earlier logs that we know exists
 TEST_HASH = "8fe251310c0aa4c0f9db89968be2d94b33de903b7b807dd18d5f40cfc5f73587"
 
