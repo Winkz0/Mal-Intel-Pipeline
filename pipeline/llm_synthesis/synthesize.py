@@ -9,13 +9,11 @@ Usage:
     python synthesize.py <sha256> --dry-run
 """
 
-import os
 import sys
 import logging
 import argparse
 import copy
 from pathlib import Path
-import concurrent.futures
 
 # 1. Truncation Helper Function
 def truncate_heavy_data(analysis_dict: dict, max_items: int = 500, max_str_len: int = 256) -> dict:
@@ -114,7 +112,7 @@ def process_synthesis(sha256: str, dry_run: bool, skip_checkpoint: bool, no_raw:
         result = synthesize(analysis=minified_analysis, prompt=minified_prompt, dry_run=dry_run, cost_estimate=cost)
         
         if not result.get("error"):
-            print(f"  [+] Retry successful! Sample minified and synthesized.")
+            print("  [+] Retry successful! Sample minified and synthesized.")
 
     # Final Error Check
     if result.get("error"):
@@ -162,7 +160,7 @@ if __name__ == "__main__":
         
         import time
         
-        print(f"[*] Starting sequential LLM synthesis (Throttled to respect API Tier limits)...")
+        print("[*] Starting sequential LLM synthesis (Throttled to respect API Tier limits)...")
         
         for index, h in enumerate(hashes):
             if index > 0:

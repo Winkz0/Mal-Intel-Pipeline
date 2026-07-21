@@ -52,7 +52,7 @@ def load_corpus_data():
                     "Techniques": techniques,
                     "Confidence": confidence
                 })
-        except Exception as e:
+        except Exception:
             continue
             
     return pd.DataFrame(corpus)

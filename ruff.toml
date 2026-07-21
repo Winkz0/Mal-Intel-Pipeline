@@ -1,0 +1,16 @@
+# Ruff configuration — https://docs.astral.sh/ruff/
+target-version = "py311"
+line-length = 100
+
+[lint]
+# pyflakes (F) + a pragmatic subset of pycodestyle (E).
+select = ["E", "F"]
+ignore = [
+    "E402",  # module-level import not at top — operator scripts set sys.path first
+    "E501",  # line length is enforced softly, not as a hard failure
+    "E741",  # ambiguous variable names in a few short helpers
+    "F841",  # unused locals — a few are extracted for readability / side effects
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401"]  # re-exports

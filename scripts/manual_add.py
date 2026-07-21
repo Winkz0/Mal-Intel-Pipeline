@@ -11,7 +11,6 @@ Usage:
 import os
 import sys
 import json
-import hashlib
 import argparse
 import logging
 from pathlib import Path
@@ -122,12 +121,12 @@ def main():
         return
 
     print(f"\n{'='*60}")
-    print(f"  Manual Sample Acquisition")
+    print("  Manual Sample Acquisition")
     print(f"{'='*60}")
     print(f"  SHA256 : {sha256}")
 
     # Query MalwareBazaar for metadata
-    print(f"  [*] Querying MalwareBazaar for metadata...")
+    print("  [*] Querying MalwareBazaar for metadata...")
     mb_info = query_bazaar_info(sha256, api_key)
 
     # Use MalwareBazaar metadata if available, CLI args override
@@ -142,19 +141,19 @@ def main():
     print(f"  Family : {family}")
     print(f"  File   : {file_name} ({file_type})")
     if mb_info:
-        print(f"  [+] MalwareBazaar metadata found")
+        print("  [+] MalwareBazaar metadata found")
     else:
-        print(f"  [~] No MalwareBazaar metadata — using CLI args")
+        print("  [~] No MalwareBazaar metadata — using CLI args")
 
     # Download
     if not args.skip_download:
         if zip_path.exists():
-            print(f"  [~] Zip already in quarantine, skipping download")
+            print("  [~] Zip already in quarantine, skipping download")
         else:
-            print(f"  [*] Downloading from MalwareBazaar...")
+            print("  [*] Downloading from MalwareBazaar...")
             zip_bytes = download_from_bazaar(sha256, api_key)
             if not zip_bytes:
-                print(f"  [!] Download failed. Sample may not be on MalwareBazaar.")
+                print("  [!] Download failed. Sample may not be on MalwareBazaar.")
                 print(f"      You can manually place the zip in: {QUARANTINE_DIR}")
                 print(f"      Then rerun with: python scripts/manual_add.py {sha256} --skip-download")
                 return
@@ -167,7 +166,7 @@ def main():
         if not zip_path.exists():
             print(f"  [!] --skip-download specified but no zip found at: {zip_path}")
             return
-        print(f"  [~] Skipping download — using existing zip")
+        print("  [~] Skipping download — using existing zip")
 
     # Build sidecar metadata (matches acquire_sample.py format)
     meta = {
@@ -194,7 +193,7 @@ def main():
 
     # Register in DB
     update_status(sha256, "ACQUIRED", family=family)
-    print(f"  [+] DB status: ACQUIRED")
+    print("  [+] DB status: ACQUIRED")
 
     # Alias registration
     if _HAS_NAMING:
@@ -204,17 +203,17 @@ def main():
             print(f"  [+] Alias registered: {alias_input}")
 
     print(f"\n{'='*60}")
-    print(f"  Sample ready for pipeline")
+    print("  Sample ready for pipeline")
     print(f"{'='*60}")
-    print(f"  Next steps:")
-    print(f"    1. Transfer to REMnux:")
+    print("  Next steps:")
+    print("    1. Transfer to REMnux:")
     print(f"       python -m pipeline.utils.remote push {sha256}")
-    print(f"    2. On REMnux — extract and run static analysis:")
+    print("    2. On REMnux — extract and run static analysis:")
     print(f"       7z x -pinfected {sha256}.zip")
     print(f"       python -m pipeline.static_analysis.analyze {sha256}")
-    print(f"    3. Transfer analysis back to host:")
+    print("    3. Transfer analysis back to host:")
     print(f"       python -m pipeline.utils.remote pull {sha256}")
-    print(f"    4. Continue pipeline:")
+    print("    4. Continue pipeline:")
     print(f"       python -m pipeline.llm_synthesis.synthesize {sha256}")
     print(f"       python -m pipeline.reporting.report {sha256}")
     print(f"{'='*60}")

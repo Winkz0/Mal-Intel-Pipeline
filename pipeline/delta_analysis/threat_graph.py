@@ -9,7 +9,6 @@ import json
 import logging
 import argparse
 from pathlib import Path
-from collections import defaultdict
 
 from pyvis.network import Network
 
@@ -246,7 +245,7 @@ def render_graph(
 def generate_threat_graph(min_score: int = 5) -> Path:
     """Full pipeline: load deltas → build graph data → render HTML."""
     print(f"\n{'='*60}")
-    print(f"  Threat Graph Generator")
+    print("  Threat Graph Generator")
     print(f"{'='*60}")
 
     deltas = load_all_deltas()
@@ -269,7 +268,7 @@ def generate_threat_graph(min_score: int = 5) -> Path:
     output_path = render_graph(graph_data)
     if output_path:
         print(f"  [+] Graph saved: {output_path}")
-        print(f"  [+] Open in browser to interact")
+        print("  [+] Open in browser to interact")
     print(f"{'='*60}")
     return output_path
 

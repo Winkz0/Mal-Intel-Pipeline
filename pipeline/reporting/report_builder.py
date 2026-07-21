@@ -7,7 +7,6 @@ Produces two audience-aware documents:
 """
 
 from pathlib import Path
-from datetime import datetime, timezone
 try:
     from pipeline.utils.naming import resolve
     _HAS_NAMING = True
@@ -98,7 +97,7 @@ def render_technical_report(synthesis: dict) -> str:
     else:
         md += "| — | No techniques mapped | — | — |\n"
 
-    md += f"""
+    md += """
 ---
 
 ## Key Indicators of Compromise

@@ -174,6 +174,6 @@ if __name__ == "__main__":
         print(f"  Notable  : {len(s['notable'])} flagged")
 
         if s["notable"]:
-            print(f"\n  --- Notable Strings ---")
+            print("\n  --- Notable Strings ---")
             for n in s["notable"][:20]:
                 print(f"    {n}")

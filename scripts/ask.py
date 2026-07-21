@@ -55,9 +55,9 @@ def run_query(question: str, family: str = None, doc_type: str = None, verbose: 
 def interactive_mode(family: str = None, doc_type: str = None, verbose: bool = False):
     """REPL loop for continuous querying."""
     print(f"\n{'='*60}")
-    print(f"  Mal-Intel RAG Assistant — Interactive Mode")
-    print(f"  Type 'quit' or 'exit' to stop")
-    print(f"  Type 'reindex' to rebuild the vector store")
+    print("  Mal-Intel RAG Assistant — Interactive Mode")
+    print("  Type 'quit' or 'exit' to stop")
+    print("  Type 'reindex' to rebuild the vector store")
     print(f"{'='*60}\n")
 
     while True:

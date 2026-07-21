@@ -42,7 +42,7 @@ def run_validation(sha256: str) -> dict:
     }
 
     print(f"\n{'='*60}")
-    print(f"  CHECKPOINT #3 — RULE VALIDATION")
+    print("  CHECKPOINT #3 — RULE VALIDATION")
     print(f"  Sample: {sha256[:32]}...")
     print(f"{'='*60}")
 
@@ -84,28 +84,28 @@ def run_validation(sha256: str) -> dict:
     print(f"{'─'*60}")
 
     # Checkpoint #3 — analyst approval
-    print(f"\n  Review the rules above and approve for production use.")
-    print(f"  [y] Approve — mark rules as production-ready")
-    print(f"  [n] Reject — rules need revision")
-    print(f"  [s] Skip approval — save validation results only")
+    print("\n  Review the rules above and approve for production use.")
+    print("  [y] Approve — mark rules as production-ready")
+    print("  [n] Reject — rules need revision")
+    print("  [s] Skip approval — save validation results only")
 
     while True:
         cmd = input("\n  Decision: ").strip().lower()
         if cmd == "y":
             report["analyst_approved"] = True
             report["ready_for_production"] = report["overall_valid"]
-            print(f"  [+] Rules approved for production.")
+            print("  [+] Rules approved for production.")
             break
         elif cmd == "n":
             report["analyst_approved"] = False
             report["ready_for_production"] = False
-            print(f"  [-] Rules rejected — revision required.")
+            print("  [-] Rules rejected — revision required.")
             break
         elif cmd == "s":
-            print(f"  [~] Skipping approval — results saved.")
+            print("  [~] Skipping approval — results saved.")
             break
         else:
-            print(f"  [!] Enter y, n, or s.")
+            print("  [!] Enter y, n, or s.")
 
     # Save validation report
     save_validation_report(report)

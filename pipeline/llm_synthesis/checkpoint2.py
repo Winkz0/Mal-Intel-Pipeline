@@ -5,9 +5,7 @@ before LLM synthesis API call is made.
 Analyst can add notes that get injected into the synthesis prompt.
 """
 
-import json
 import logging
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -22,13 +20,13 @@ def run_checkpoint2(analysis: dict, cost_estimate: dict) -> tuple[bool, str]:
     iocs = analysis.get("ioc_candidates", {})
 
     print(f"\n{'='*60}")
-    print(f"  CHECKPOINT #2 — PRE-SYNTHESIS REVIEW")
+    print("  CHECKPOINT #2 — PRE-SYNTHESIS REVIEW")
     print(f"{'='*60}")
     print(f"  Sample   : {sample.get('sha256', 'unknown')[:32]}...")
     print(f"  Family   : {sample.get('malware_family', 'unknown')}")
     print(f"  Type     : {sample.get('file_type', 'unknown')}")
 
-    print(f"\n  --- Static Analysis Summary ---")
+    print("\n  --- Static Analysis Summary ---")
     floss = static.get("floss", {})
     capa = static.get("capa", {})
     diec = static.get("diec", {})
@@ -42,22 +40,22 @@ def run_checkpoint2(analysis: dict, cost_estimate: dict) -> tuple[bool, str]:
           f"packed: {diec.get('is_packed', False)}")
     print(f"  pefile   : {'PE parsed' if pe.get('is_pe') else 'not a PE'}")
 
-    print(f"\n  --- IOC Candidates ---")
+    print("\n  --- IOC Candidates ---")
     print(f"  IPs      : {len(iocs.get('ips', []))}")
     print(f"  URLs     : {len(iocs.get('urls', []))}")
     print(f"  Commands : {len(iocs.get('commands', []))}")
 
-    print(f"\n  --- Cost Estimate ---")
+    print("\n  --- Cost Estimate ---")
     print(f"  Model    : {cost_estimate.get('model', 'unknown')}")
     print(f"  Input    : ~{cost_estimate.get('estimated_input_tokens', 0):,} tokens")
     print(f"  Output   : ~{cost_estimate.get('estimated_output_tokens', 0):,} tokens")
     print(f"  Est. Cost: ${cost_estimate.get('estimated_cost_usd', 0):.6f} USD")
 
-    print(f"\n  Options:")
-    print(f"  [y] Proceed with synthesis")
-    print(f"  [n] Abort")
-    print(f"  [d] Dry run (no API call)")
-    print(f"  [note] Add analyst notes before proceeding")
+    print("\n  Options:")
+    print("  [y] Proceed with synthesis")
+    print("  [n] Abort")
+    print("  [d] Dry run (no API call)")
+    print("  [note] Add analyst notes before proceeding")
 
     analyst_notes = ""
 

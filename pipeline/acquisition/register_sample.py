@@ -10,7 +10,6 @@ Usage:
     python register_sample.py <path_to_sample> --family Mirai --tags botnet,ddos
 """
 
-import os
 import sys
 import json
 import hashlib
@@ -124,7 +123,7 @@ def register_sample(sample_path: Path, family: str = None, tags: list = None) ->
         json.dump(sidecar, f, indent=2)
 
     print(f"\n{'='*55}")
-    print(f"  Sample registered successfully")
+    print("  Sample registered successfully")
     print(f"{'='*55}")
     print(f"  File     : {sidecar['file_name']}")
     print(f"  Type     : {sidecar['file_type']}")

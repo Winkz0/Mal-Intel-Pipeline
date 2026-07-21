@@ -165,7 +165,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(f"\n{'='*60}")
-    print(f"  M11: RAG Corpus Indexer")
+    print("  M11: RAG Corpus Indexer")
     print(f"{'='*60}")
 
     count = index_corpus(force=args.force)

@@ -7,7 +7,6 @@ Usage:
     python reset_pipeline.py
 """
 
-import os
 import shutil
 from pathlib import Path
 
@@ -62,14 +61,14 @@ def verify_quarantine():
     if not remaining_files:
         print(f"  [+] Verified : {QUARANTINE_DIR.relative_to(REPO_ROOT)}/ is completely empty.")
     else:
-        print(f"\n  [!] WARNING  : QUARANTINE IS NOT EMPTY!")
+        print("\n  [!] WARNING  : QUARANTINE IS NOT EMPTY!")
         print(f"      Found {len(remaining_files)} rogue item(s) left behind:")
         for item in remaining_files:
             print(f"      - {item.name}")
 
 if __name__ == "__main__":
     print(f"\n{'='*60}")
-    print(f"  Initiating Clean Slate Protocol...")
+    print("  Initiating Clean Slate Protocol...")
     print(f"{'='*60}\n")
 
     delete_database()

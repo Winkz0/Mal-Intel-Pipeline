@@ -11,7 +11,6 @@ Usage:
 
 import os
 import sys
-import json
 import logging
 import argparse
 from pathlib import Path
@@ -66,24 +65,24 @@ def analyze_sample(sha256: str) -> dict | None:
             zf.extract(f"{sha256}.{file_ext}", path=ram_disk_dir)
 
         # 3. Run tools against the RAM-disk binary
-        print(f"  [1/4] FLOSS — string extraction...")
+        print("  [1/4] FLOSS — string extraction...")
         floss_result = run_floss(bin_path)
         print(f"        {'✓' if floss_result['success'] else '✗'} "
               f"{floss_result['summary']['total_static']} static strings, "
               f"{len(floss_result['summary']['notable'])} notable")
 
-        print(f"  [2/4] Capa — capability detection...")
+        print("  [2/4] Capa — capability detection...")
         capa_result = run_capa(bin_path)
         print(f"        {'✓' if capa_result['success'] else '✗'} "
               f"{capa_result['summary']['total_capabilities']} capabilities, "
               f"{capa_result['summary']['total_attack_ttps']} ATT&CK TTPs")
 
-        print(f"  [3/4] diec — file type detection...")
+        print("  [3/4] diec — file type detection...")
         diec_result = run_diec(bin_path)
         print(f"        {'✓' if diec_result['success'] else '✗'} "
               f"{diec_result['summary']['file_type'] or 'unknown type'}")
 
-        print(f"  [4/4] pefile — PE header analysis...")
+        print("  [4/4] pefile — PE header analysis...")
         pefile_result = run_pefile(bin_path)
         print(f"        {'✓' if pefile_result['success'] else '✗'} "
               f"{'PE parsed' if pefile_result['is_pe'] else 'not a PE — skipped'}")
@@ -107,9 +106,9 @@ def analyze_sample(sha256: str) -> dict | None:
         
         print(f"\n Triage Score   : {triage['score']}")
         if triage['needs_dynamic']:
-            print(f" [!] Flagged for Dynamic Detonation (Score >= 50)")
+            print(" [!] Flagged for Dynamic Detonation (Score >= 50)")
         
-        print(f"\n  IOC Candidates:")
+        print("\n  IOC Candidates:")
         iocs = analysis["ioc_candidates"]
         print(f"    IPs      : {len(iocs['ips'])}")
         print(f"    URLs     : {len(iocs['urls'])}")

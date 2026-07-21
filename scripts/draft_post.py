@@ -133,7 +133,7 @@ tags: [{family.lower()}, {', '.join(technique_ids[:5])}]
     for indicator in tech.get("key_indicators", []):
         post += f"- `{indicator}`\n"
 
-    post += f"""
+    post += """
 ## Recommended Actions
 
 """
@@ -159,13 +159,13 @@ tags: [{family.lower()}, {', '.join(technique_ids[:5])}]
         f.write(post)
 
     print(f"\n{'='*60}")
-    print(f"  Blog Draft Generated")
+    print("  Blog Draft Generated")
     print(f"{'='*60}")
     print(f"  File   : {out_path}")
     print(f"  Family : {family}")
     print(f"  SHA256 : {sha256[:32]}...")
-    print(f"")
-    print(f"  Fill in the two <!-- YOUR VOICE --> sections and push.")
+    print("")
+    print("  Fill in the two <!-- YOUR VOICE --> sections and push.")
     print(f"{'='*60}")
 
 

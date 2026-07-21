@@ -162,13 +162,13 @@ def save_ingestion_summary(iocs: list[dict], elapsed: float):
     
     lines = [
         f"# Ingestion Summary - {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
-        f"",
+        "",
         f"**Total IOCs:** {hash_count}",
         f"**Approved for analysis:** {len(approved)}",
         f"**Elapsed:** {elapsed:.1f}s",
-        f"",
-        f"---"
-        f"",
+        "",
+        "---"
+        "",
     ]
     
     if approved:

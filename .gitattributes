@@ -1,0 +1,14 @@
+# Normalize line endings to LF on checkin for all text files.
+# Prevents CRLF/LF churn between Windows, WSL, and Linux checkouts.
+* text=auto eol=lf
+
+# Shell scripts must stay LF regardless of platform.
+*.sh text eol=lf
+
+# Treat known binary types as binary (no line-ending or diff munging).
+*.zip binary
+*.msi binary
+*.pdf binary
+*.db binary
+*.png binary
+*.jpg binary

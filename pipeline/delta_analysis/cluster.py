@@ -59,7 +59,7 @@ def extract_features(sample: dict) -> str:
 
 def run_clustering(eps: float = 0.5, min_samples: int = 2):
     print(f"\n{'='*60}")
-    print(f"  M10: DBSCAN Corpus Clustering")
+    print("  M10: DBSCAN Corpus Clustering")
     print(f"{'='*60}")
 
     corpus = load_corpus()

@@ -105,6 +105,6 @@ if __name__ == "__main__":
         for w in result["warnings"]:
             print(f"  Warning: {w}")
     if result["converted_output"]:
-        print(f"\n  Converted Output:")
+        print("\n  Converted Output:")
         print(f"  {result['converted_output'][:300]}")
     print(f"{'='*50}")

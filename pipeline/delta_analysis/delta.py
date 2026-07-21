@@ -84,40 +84,40 @@ def render_delta_report(delta: dict) -> str:
         )
 
     # Detailed overlaps for top match only
-    md += f"\n---\n\n## Detailed Overlaps — Top Match\n\n"
+    md += "\n---\n\n## Detailed Overlaps — Top Match\n\n"
 
     if top["shared_attack_ttps"]:
-        md += f"### Shared ATT&CK TTPs\n"
+        md += "### Shared ATT&CK TTPs\n"
         for ttp in top["shared_attack_ttps"]:
             md += f"- `{ttp}`\n"
         md += "\n"
 
     if top["shared_notable_strings"]:
-        md += f"### Shared Notable Strings\n"
+        md += "### Shared Notable Strings\n"
         for s in top["shared_notable_strings"][:20]:
             md += f"- `{s}`\n"
         md += "\n"
 
     if top["shared_ips"]:
-        md += f"### Shared IPs\n"
+        md += "### Shared IPs\n"
         for ip in top["shared_ips"]:
             md += f"- `{ip}`\n"
         md += "\n"
 
     if top["shared_urls"]:
-        md += f"### Shared URLs\n"
+        md += "### Shared URLs\n"
         for url in top["shared_urls"]:
             md += f"- `{url}`\n"
         md += "\n"
 
     if top["shared_capabilities"]:
-        md += f"### Shared Capabilities\n"
+        md += "### Shared Capabilities\n"
         for cap in top["shared_capabilities"]:
             md += f"- {cap}\n"
         md += "\n"
 
     if top["shared_string_count"] > 0:
-        md += f"### Shared Static Strings\n"
+        md += "### Shared Static Strings\n"
         md += f"_{top['shared_string_count']} strings in common (see full analysis JSON for details)_\n\n"
 
     md += "---\n\n_Delta analysis uses exact match overlaps only. " \
@@ -141,8 +141,8 @@ def generate_delta(sha256: str) -> None:
     print(f"  Corpus size : {corpus_size} sample(s)")
 
     if corpus_size == 0:
-        print(f"  [~] No previous samples to compare against.")
-        print(f"      Run more samples through the pipeline to enable delta analysis.")
+        print("  [~] No previous samples to compare against.")
+        print("      Run more samples through the pipeline to enable delta analysis.")
     else:
         top = delta.get("top_match", {})
         print(f"  Top match   : {top.get('compared_sha256', 'n/a')[:16]}...")

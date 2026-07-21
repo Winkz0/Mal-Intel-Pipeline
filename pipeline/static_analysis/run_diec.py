@@ -156,7 +156,7 @@ if __name__ == "__main__":
         print(f"  Packed       : {s['is_packed']}")
 
         if results["detections"]:
-            print(f"\n  --- All Detections ---")
+            print("\n  --- All Detections ---")
             for d in results["detections"]:
                 dtype = d.get("type", "")
                 name = d.get("name", "")

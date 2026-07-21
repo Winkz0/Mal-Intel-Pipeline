@@ -211,11 +211,11 @@ if __name__ == "__main__":
         print(f"  Exports      : {s['total_exports']}")
 
         if s["high_entropy_sections"]:
-            print(f"\n  --- High Entropy Sections ---")
+            print("\n  --- High Entropy Sections ---")
             for sec in s["high_entropy_sections"]:
                 print(f"    {sec}")
 
         if s["suspicious_imports"]:
-            print(f"\n  --- Suspicious Imports ---")
+            print("\n  --- Suspicious Imports ---")
             for imp in s["suspicious_imports"]:
                 print(f"    {imp}")

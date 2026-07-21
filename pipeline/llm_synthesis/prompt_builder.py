@@ -4,8 +4,6 @@ Constructs structured prompts from M6 analysis JSON for Claude API synthesis.
 Designed to produce analyst-quality output, not generic summaries.
 """
 
-import json
-from pathlib import Path
 
 
 def build_synthesis_prompt(analysis: dict) -> str:

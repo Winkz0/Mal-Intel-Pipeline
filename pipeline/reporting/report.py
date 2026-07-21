@@ -85,14 +85,14 @@ def generate_reports(sha256: str) -> None:
     if yara_path:
         print(f"  [+] YARA rule        : {yara_path.name}")
     else:
-        print(f"  [-] YARA rule        : skipped (dry run or not generated)")
+        print("  [-] YARA rule        : skipped (dry run or not generated)")
 
     # Sigma rule
     sigma_rule, sigma_path = extract_sigma(synthesis)
     if sigma_path:
         print(f"  [+] Sigma rule       : {sigma_path.name}")
     else:
-        print(f"  [-] Sigma rule       : skipped (dry run or not generated)")
+        print("  [-] Sigma rule       : skipped (dry run or not generated)")
 
     update_status(actual_sha256, 'REPORTED')
     
@@ -126,7 +126,7 @@ def generate_reports(sha256: str) -> None:
 # Auto-run delta analysis against corpus
     try:
         generate_delta(actual_sha256)
-        print(f"  [+] Delta analysis   : Complete")
+        print("  [+] Delta analysis   : Complete")
     except Exception as e:
         print(f"  [!] Delta analysis   : Failed ({e})")
     

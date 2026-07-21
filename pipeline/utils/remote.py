@@ -6,7 +6,6 @@ over the isolated VMnet2 network.
 """
 
 import logging
-import os
 from pathlib import Path
 
 import paramiko
@@ -170,7 +169,7 @@ def push_checkpoint() -> bool:
     print(f"  [*] Pushing {manifest.name} to REMnux...")
     success = push_file(str(manifest), remote_path)
     if success:
-        print(f"  [+] Done")
+        print("  [+] Done")
     return success
 
 

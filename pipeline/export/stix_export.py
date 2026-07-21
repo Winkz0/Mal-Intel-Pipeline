@@ -23,7 +23,6 @@ from stix2 import (
     AttackPattern,
     Relationship,
     Report,
-    Note,
     Identity,
     ExternalReference,
 )
@@ -313,7 +312,7 @@ def export_stix(sha256: str) -> Path | None:
     actual_sha256 = sample.get("sha256", sha256)
 
     if not syn:
-        print(f"  [!] Synthesis data is empty")
+        print("  [!] Synthesis data is empty")
         return None
 
     ttp_mapping = syn.get("ttp_mapping", {})

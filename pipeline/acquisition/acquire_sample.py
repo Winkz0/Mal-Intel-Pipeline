@@ -10,7 +10,6 @@ import json
 import hashlib
 import logging
 import io
-import requests
 import pyzipper
 from pathlib import Path
 from datetime import datetime, timezone

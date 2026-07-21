@@ -167,7 +167,7 @@ if __name__ == "__main__":
         print(f"  MBC Behaviors: {s['total_mbc']}")
 
         if results["attack"]:
-            print(f"\n  --- ATT&CK TTPs ---")
+            print("\n  --- ATT&CK TTPs ---")
             for ttp in results["attack"]:
                 tid = ttp.get('id', '')
                 technique = ttp.get('technique', '')
@@ -175,6 +175,6 @@ if __name__ == "__main__":
                 print(f"    [{tid}] {technique} ({tactic})")
 
         if s["notable"]:
-            print(f"\n  --- Capabilities ---")
+            print("\n  --- Capabilities ---")
             for cap in s["notable"]:
                 print(f"    {cap}")
