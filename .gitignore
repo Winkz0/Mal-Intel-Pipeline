@@ -254,3 +254,25 @@ checkpoints/*.pkl
 # OS
 Thumbs.db
 Desktop.ini
+
+# Editor swap / backup files
+*.swp
+*.swo
+*~
+
+# Credential / VPN / cookie material — must never be committed
+*.ovpn
+*.pem
+*.key
+cookies.txt
+passwords.txt
+pin.txt
+
+# Stray binaries / archives that don't belong in the repo
+*.zip
+*.msi
+*.exe
+*.dll
+
+# wget/curl logs
+wget-log*
