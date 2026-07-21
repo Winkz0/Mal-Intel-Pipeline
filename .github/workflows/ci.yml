@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-compile:
+    name: Lint & byte-compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Ruff lint
+        run: ruff check pipeline scripts
+
+      - name: Byte-compile all sources
+        run: python -m compileall -q pipeline scripts dashboard.py reset_pipeline.py
+
+  secret-scan:
+    name: Secret scan (detect-secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Scan against baseline
+        run: |
+          detect-secrets scan --baseline .secrets.baseline \
+            pipeline scripts config dashboard.py reset_pipeline.py
+          # Ignore the volatile generated_at timestamp; fail only on real result changes.
+          CHANGES=$(git diff .secrets.baseline | grep -E '^[+-]' \
+            | grep -vE '^[+-]{3}' | grep -v '"generated_at"' || true)
+          if [ -n "$CHANGES" ]; then
+            echo "::error::New secrets detected — review and update .secrets.baseline"
+            echo "$CHANGES"
+            exit 1
+          fi

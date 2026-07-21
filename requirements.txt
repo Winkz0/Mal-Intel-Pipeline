@@ -1,0 +1,33 @@
+# Mal-Intel-Pipeline — Python dependencies
+# Pinned to the versions the pipeline was developed and validated against.
+#   python -m venv venv && source venv/bin/activate   (Windows: venv\Scripts\activate)
+#   pip install -r requirements.txt
+
+# Intel feed ingestion & sample acquisition
+requests==2.32.5
+
+# LLM synthesis layer (Claude API)
+anthropic==0.86.0
+
+# RAG assistant (vector store + retrieval)
+chromadb==1.5.8
+
+# Configuration / secrets loading
+python-dotenv==1.2.2
+
+# Remote execution & transfer to the REMnux analysis VM
+paramiko==4.0.0
+
+# Encrypted (password-protected) malware sample handling
+pyzipper==0.3.6
+
+# Delta analysis: clustering & threat-graph visualization
+scikit-learn==1.8.0
+pandas==3.0.2
+pyvis==0.3.2
+
+# STIX 2.1 export
+stix2==3.0.2
+
+# Analyst dashboard
+streamlit==1.56.0
