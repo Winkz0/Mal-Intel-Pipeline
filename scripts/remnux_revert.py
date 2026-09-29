@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
-"""REvert REMnux to its clean-baseline snapshot through the Proxmox API.
+"""Revert REMnux to its clean-baseline snapshot through the Proxmox API.
 
-Cycle: stop -> rollback -> start -> wait until ssh answers.
+Cycle: stop -> rollback -> start -> wait until SSH answers.
 
-Runs from the pipeline VM with an API token scoped to VM.Audit, VM.PowerMgmt and VM.Snapshot.Rollback on /vms/<remnux_vmID> only It can roll REMNux back and power-cycle it; it cannot change REMnux's config (including it's network) or touch any other VM.
+Runs from the pipeline VM with an API token scoped to VM.Audit,
+VM.PowerMgmt and VM.Snapshot.Rollback on /vms/<REMNUX_VMID> only. It can
+roll REMnux back and power-cycle it; it cannot change REMnux's config
+(including its network) or touch any other VM.
 
-Config is read from config/secrets.env, the same file the rest of the pipeline uses. Only PVE_TOKEN_SECRET is required, the rest have defaults:
+Config is read from config/secrets.env, the same file the rest of the
+pipeline uses. Only PVE_TOKEN_SECRET is required; the rest have defaults:
 
     PVE_TOKEN_SECRET=<token value>
     PVE_TOKEN_ID=remnux-revert@pve!pipeline
@@ -15,12 +19,12 @@ Config is read from config/secrets.env, the same file the rest of the pipeline u
     REMNUX_VMID=<vmid>
     REMNUX_SNAPSHOT=clean-baseline
     REMNUX_SSH_HOST=remnux
-    
-Usage: 
-    python scripts/remnux_revert.py                 # full revert, waits for SSH
-    python scripts/remnux_revert.py --check         # read-only: token, snapshot, status
-    python scripts/remnux_revert.py --no-start      # roll back, leave REMNux powered off
-"""   
+
+Usage:
+    python scripts/remnux_revert.py             # full revert, waits for SSH
+    python scripts/remnux_revert.py --check     # read-only: token, snapshot, status
+    python scripts/remnux_revert.py --no-start  # roll back, leave REMnux powered off
+"""
 from __future__ import annotations
 
 import argparse
@@ -50,42 +54,45 @@ VMID = os.getenv("REMNUX_VMID", "<vmid>")
 SNAPSHOT = os.getenv("REMNUX_SNAPSHOT", "clean-baseline")
 SSH_HOST = os.getenv("REMNUX_SSH_HOST", "remnux")
 
-TASK_TIMEOUT = 180  # Seconds for any single stop / rollback / start task
+TASK_TIMEOUT = 180  # seconds for any single stop / rollback / start task
 
 log = logging.getLogger("remnux_revert")
 
 
 class RevertError(RuntimeError):
-    """Any failture in the revert cycle."""
+    """Any failure in the revert cycle."""
 
 
-    # --- Proxmox API ------------------------------------------------------------------
+# --- Proxmox API -------------------------------------------------------------
 
 def _context() -> ssl.SSLContext:
-    """TLS context pinned to the node's own CA; verification stays on """
+    """TLS context pinned to the node's own CA; verification stays on."""
     if not TOKEN_SECRET:
         raise RevertError("PVE_TOKEN_SECRET is not set (config/secrets.env)")
     if not CA_PATH.is_file():
-        raise RevertError(f"PVE_CA_PATH {CA_PATH} does not exist or is not a file")
+        raise RevertError(f"CA file not found: {CA_PATH}")
     return ssl.create_default_context(cafile=str(CA_PATH))
+
 
 def _api(method: str, path: str, ctx: ssl.SSLContext):
     req = urllib.request.Request(f"{API_URL}{path}", method=method)
     req.add_header("Authorization", f"PVEAPIToken={TOKEN_ID}={TOKEN_SECRET}")
     try:
         with urllib.request.urlopen(req, context=ctx, timeout=30) as resp:
-            return json.load(resp.get("data"))
+            return json.load(resp).get("data")
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")[:300]
         raise RevertError(f"{method} {path} -> HTTP {exc.code}: {detail}") from None
-    
+    except urllib.error.URLError as exc:
+        raise RevertError(f"{method} {path} -> {exc.reason}") from None
+
 
 def _vm(suffix: str) -> str:
     return f"/nodes/{NODE}/qemu/{VMID}{suffix}"
 
 
 def vm_status(ctx: ssl.SSLContext) -> str:
-    return _api("GET", _vm(".status/current"), ctx)["status"]
+    return _api("GET", _vm("/status/current"), ctx)["status"]
 
 
 def snapshot_exists(ctx: ssl.SSLContext) -> bool:
@@ -111,13 +118,12 @@ def _run(suffix: str, ctx: ssl.SSLContext, label: str) -> None:
     upid = _api("POST", _vm(suffix), ctx)
     log.info("%s: %s", label, upid)
     _wait_task(upid, ctx)
-    
 
 
-# --- SSH readiness ------------------------------------------------------------------
+# --- SSH readiness -----------------------------------------------------------
 
 def wait_for_ssh(timeout: int) -> None:
-    """Revert is a cold boot; dont hand REMnux back until SSH answers."""
+    """Revert is a cold boot; don't hand REMnux back until SSH answers."""
     deadline = time.monotonic() + timeout
     cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", SSH_HOST, "true"]
     while time.monotonic() < deadline:
@@ -130,7 +136,7 @@ def wait_for_ssh(timeout: int) -> None:
     raise RevertError(f"{SSH_HOST} did not answer SSH within {timeout}s")
 
 
-# --- Entry Points ------------------------------------------------------------------
+# --- Entry points ------------------------------------------------------------
 
 def revert_remnux(start: bool = True, ssh_timeout: int = 180) -> float:
     """Roll REMnux back to SNAPSHOT. Returns elapsed seconds."""
@@ -139,9 +145,9 @@ def revert_remnux(start: bool = True, ssh_timeout: int = 180) -> float:
 
     if not snapshot_exists(ctx):
         raise RevertError(f"snapshot '{SNAPSHOT}' not found on VM {VMID}")
-                          
+
     if vm_status(ctx) != "stopped":
-        _run("/status/stop", ctx, "stop") # hard stop: state is discarded anyway
+        _run("/status/stop", ctx, "stop")  # hard stop: state is discarded anyway
     _run(f"/snapshot/{urllib.parse.quote(SNAPSHOT, safe='')}/rollback", ctx, "rollback")
 
     if start:
@@ -152,8 +158,8 @@ def revert_remnux(start: bool = True, ssh_timeout: int = 180) -> float:
     return time.monotonic() - began
 
 
-def check () -> None:
-    """Read-Only: token accepted, snapshot present, current VM state."""
+def check() -> None:
+    """Read-only: token accepted, snapshot present, current VM state."""
     ctx = _context()
     log.info("token accepted; VM %s is %s", VMID, vm_status(ctx))
     if not snapshot_exists(ctx):
@@ -161,14 +167,14 @@ def check () -> None:
     log.info("snapshot '%s' present", SNAPSHOT)
 
 
-def main () -> int:
+def main() -> int:
     parser = argparse.ArgumentParser(description="Revert REMnux to its clean-baseline snapshot.")
-    parser.add_argument("--check", action="store_true", 
-                        help="read-only: token, snapshot, status")
+    parser.add_argument("--check", action="store_true",
+                        help="read-only: verify token, snapshot and VM status")
     parser.add_argument("--no-start", action="store_true",
-                        help="roll back, leave REMnux powered off")
+                        help="roll back and leave REMnux powered off")
     parser.add_argument("--ssh-timeout", type=int, default=180,
-                        help="seconds to wait for SSH after power-on (default: 180)")
+                        help="seconds to wait for SSH after start (default: 180)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -177,7 +183,7 @@ def main () -> int:
             check()
         else:
             elapsed = revert_remnux(start=not args.no_start, ssh_timeout=args.ssh_timeout)
-            log.info("revert cycle completed in %.0fs", elapsed)
+            log.info("revert complete in %.0fs", elapsed)
     except RevertError as exc:
         log.error("%s", exc)
         return 1
