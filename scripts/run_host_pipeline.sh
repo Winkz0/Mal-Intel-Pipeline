@@ -15,6 +15,12 @@ SHA256="$1"
 shift
 EXTRA_ARGS="$@"
 
+# Run from the repo root with it on the import path, so `pipeline.*` imports
+# resolve no matter where the script is invoked from.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$REPO_ROOT" || exit 1
+export PYTHONPATH="$REPO_ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
 echo ""
 echo "============================================================"
 echo "  Mal-Intel-Pipeline — Host Processing"

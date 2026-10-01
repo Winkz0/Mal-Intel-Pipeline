@@ -1,11 +1,17 @@
 """
 remote.py
-SSH/SCP communication with REMnux VM via paramiko.
+SSH/SFTP communication with the REMnux VM via paramiko.
 Handles file transfers and remote command execution
-over the isolated VMnet2 network.
+over the isolated analysis network (vmbr1).
+
+CLI:
+    python -m pipeline.utils.remote test            Test REMnux connectivity
+    python -m pipeline.utils.remote push <sha256>   Push quarantined zip + meta.json to REMnux
+    python -m pipeline.utils.remote pull [sha256]   Pull one (or all) analysis JSONs from REMnux
 """
 
 import logging
+import os
 from pathlib import Path
 
 import paramiko
@@ -14,21 +20,31 @@ logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
-# REMnux connection defaults
-REMNUX_HOST = "10.10.10.10"
-REMNUX_USER = "remnux"
-REMNUX_KEY = Path.home() / ".ssh" / "remnux_key"
-REMNUX_REPO = "/home/remnux/Mal-Intel-Pipeline"
+# REMnux connection defaults (override via environment if the layout changes)
+REMNUX_HOST = os.getenv("REMNUX_HOST", "10.10.10.10")
+REMNUX_USER = os.getenv("REMNUX_USER", "remnux")
+REMNUX_KEY = Path(os.path.expanduser(os.getenv("REMNUX_KEY", "~/.ssh/id_ed25519_remnux")))
+REMNUX_REPO = os.getenv("REMNUX_REPO", "/home/remnux/Mal-Intel-Pipeline")
+KNOWN_HOSTS = Path(os.path.expanduser(os.getenv("REMNUX_KNOWN_HOSTS", "~/.ssh/known_hosts")))
 
 
 def _get_client() -> paramiko.SSHClient:
-    """Create and return a connected SSH client."""
+    """
+    Create and return a connected SSH client.
+
+    REMnux is the untrusted side of this link, so its host key must already be
+    in known_hosts (recorded on the first manual `ssh remnux`); an unknown or
+    changed key is rejected rather than silently accepted.
+    """
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    client.load_host_keys(str(KNOWN_HOSTS))
+    client.set_missing_host_key_policy(paramiko.RejectPolicy())
     client.connect(
         hostname=REMNUX_HOST,
         username=REMNUX_USER,
         key_filename=str(REMNUX_KEY),
+        allow_agent=False,
+        look_for_keys=False,
         timeout=10,
     )
     return client
@@ -100,6 +116,27 @@ def pull_file(remote_path: str, local_path: str) -> bool:
     except Exception as e:
         logger.error(f"Pull failed: {e}")
         return False
+
+
+def push_sample(sha256: str) -> bool:
+    """
+    Push a quarantined sample (encrypted zip + meta.json sidecar) to REMnux's
+    quarantine. The zip stays encrypted in transit and at rest; analyze.py
+    extracts it to a RAM disk on REMnux and wipes it afterwards.
+    """
+    quarantine = REPO_ROOT / "samples" / "quarantine"
+    remote_quarantine = f"{REMNUX_REPO}/samples/quarantine"
+    files = [quarantine / f"{sha256}.zip", quarantine / f"{sha256}.meta.json"]
+
+    missing = [f.name for f in files if not f.exists()]
+    if missing:
+        logger.error(f"Not in local quarantine: {', '.join(missing)}")
+        return False
+
+    for f in files:
+        if not push_file(str(f), f"{remote_quarantine}/{f.name}"):
+            return False
+    return True
 
 
 def pull_analysis(sha256: str = None) -> list[str]:
@@ -179,3 +216,31 @@ def list_remote_analyses() -> list[str]:
     if result["returncode"] != 0:
         return []
     return [Path(line).name for line in result["stdout"].strip().split("\n") if line]
+
+
+if __name__ == "__main__":
+    import argparse
+    import sys
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+    parser = argparse.ArgumentParser(description="Transfer helper for the REMnux analysis VM")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("test", help="test SSH connectivity to REMnux")
+    p_push = sub.add_parser("push", help="push a quarantined sample (zip + meta.json) to REMnux")
+    p_push.add_argument("sha256")
+    p_pull = sub.add_parser("pull", help="pull analysis JSON(s) from REMnux")
+    p_pull.add_argument("sha256", nargs="?", help="omit to pull all")
+    args = parser.parse_args()
+
+    if args.cmd == "test":
+        ok = test_connection()
+        print("[+] REMnux connection successful" if ok else "[!] REMnux connection failed")
+    elif args.cmd == "push":
+        ok = push_sample(args.sha256)
+    else:
+        pulled = pull_analysis(args.sha256)
+        ok = bool(pulled)
+        print(f"[+] {len(pulled)} analysis file(s) pulled" if ok else "[!] Pull failed")
+
+    sys.exit(0 if ok else 1)

@@ -208,14 +208,13 @@ def main():
     print("  Next steps:")
     print("    1. Transfer to REMnux:")
     print(f"       python -m pipeline.utils.remote push {sha256}")
-    print("    2. On REMnux — extract and run static analysis:")
-    print(f"       7z x -pinfected {sha256}.zip")
+    print("    2. On REMnux — run static analysis (do NOT unzip; analyze.py")
+    print("       extracts to a RAM disk and wipes it afterwards):")
     print(f"       python -m pipeline.static_analysis.analyze {sha256}")
     print("    3. Transfer analysis back to host:")
     print(f"       python -m pipeline.utils.remote pull {sha256}")
     print("    4. Continue pipeline:")
-    print(f"       python -m pipeline.llm_synthesis.synthesize {sha256}")
-    print(f"       python -m pipeline.reporting.report {sha256}")
+    print(f"       ./scripts/run_host_pipeline.sh {sha256}")
     print(f"{'='*60}")
 
 
