@@ -10,10 +10,12 @@ Usage:
 """
 
 import os
+import re
 import sys
+import hashlib
 import logging
 import argparse
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import shutil
 import pyzipper
 import concurrent.futures
@@ -36,6 +38,70 @@ logger = logging.getLogger(__name__)
 QUARANTINE_DIR = REPO_ROOT / "samples" / "quarantine"
 OUTPUT_DIR = REPO_ROOT / "output" / "analysis"
 
+ZIP_PASSWORD = b"infected"
+_EXT_RE = re.compile(r"^[a-z0-9]{1,10}$")
+
+
+class SampleExtractionError(RuntimeError):
+    """The quarantine zip can't be turned into the sample it claims to hold."""
+
+
+def _pick_member(zf, sha256: str):
+    """
+    Choose the sample inside the zip without trusting the sidecar's file_type.
+
+    MalwareBazaar names the member <sha256>.<ext>; manual downloads and honeypot
+    captures may not. Take the one member whose basename starts with the hash,
+    otherwise the archive's only file. Anything else is ambiguous and refused.
+    """
+    files = [i for i in zf.infolist() if not i.is_dir()]
+    named = [i for i in files if PurePosixPath(i.filename).name.lower().startswith(sha256)]
+    if len(named) == 1:
+        return named[0]
+    if not named and len(files) == 1:
+        return files[0]
+    raise SampleExtractionError(
+        f"can't choose a member: {len(files)} file(s) in zip, {len(named)} named after the hash"
+    )
+
+
+def _member_ext(member_name: str, meta_type: str) -> str:
+    """Extension from the member name; fall back to the sidecar, then 'bin'."""
+    ext = PurePosixPath(member_name).suffix.lstrip(".").lower()
+    if _EXT_RE.match(ext):
+        return ext
+    meta_type = (meta_type or "").lower()
+    if meta_type != "unknown" and _EXT_RE.match(meta_type):
+        return meta_type
+    return "bin"
+
+
+def extract_to_ram(zip_path: Path, sha256: str, ram_disk_dir: Path, meta: dict):
+    """
+    Stream the sample into the RAM disk and prove it is the hash we expect.
+
+    The output name is always <sha256>.<ext>, so no path stored in the archive
+    ever reaches the filesystem. Returns (bin_path, ext, {"md5", "sha1"}).
+    Raises SampleExtractionError on an ambiguous archive or a hash mismatch.
+    """
+    md5, sha1, sha = hashlib.md5(), hashlib.sha1(), hashlib.sha256()
+    with pyzipper.AESZipFile(zip_path) as zf:
+        zf.setpassword(ZIP_PASSWORD)
+        member = _pick_member(zf, sha256)
+        ext = _member_ext(member.filename, meta.get("file_type", ""))
+        bin_path = ram_disk_dir / f"{sha256}.{ext}"
+        with zf.open(member) as src, open(bin_path, "wb") as dst:
+            for chunk in iter(lambda: src.read(1 << 20), b""):
+                md5.update(chunk)
+                sha1.update(chunk)
+                sha.update(chunk)
+                dst.write(chunk)
+    if sha.hexdigest() != sha256:
+        raise SampleExtractionError(
+            f"SHA-256 mismatch: member '{member.filename}' hashes to {sha.hexdigest()}"
+        )
+    return bin_path, ext, {"md5": md5.hexdigest(), "sha1": sha1.hexdigest()}
+
 
 def analyze_sample(sha256: str) -> dict | None:
     zip_path = QUARANTINE_DIR / f"{sha256}.zip"
@@ -47,22 +113,31 @@ def analyze_sample(sha256: str) -> dict | None:
     print(f"  Analyzing: {zip_path.name}")
     print(f"{'='*60}")
 
-    meta = load_meta(sha256, QUARANTINE_DIR)
+    meta = dict(load_meta(sha256, QUARANTINE_DIR))
 
-  # 1. Setup RAM Disk
+    # 1. Setup RAM Disk
     ram_disk_dir = Path("/dev/shm") / f"malware_{sha256}"
     ram_disk_dir.mkdir(parents=True, exist_ok=True)
-    
-    file_ext = meta.get("file_type", "bin").lower()
-    if file_ext == "unknown":
-        file_ext = "bin"
-    bin_path = ram_disk_dir / f"{sha256}.{file_ext}"
 
     try:
-        # 2. Safely extract to RAM
-        with pyzipper.AESZipFile(zip_path) as zf:
-            zf.pwd = b'infected'
-            zf.extract(f"{sha256}.{file_ext}", path=ram_disk_dir)
+        # 2. Extract to RAM; the hash is verified before any tool touches the bytes
+        try:
+            bin_path, file_ext, hashes = extract_to_ram(zip_path, sha256, ram_disk_dir, meta)
+        except (RuntimeError, pyzipper.BadZipFile) as exc:
+            # RuntimeError covers SampleExtractionError and a wrong zip password
+            print(f"  [!] Extraction refused: {exc}")
+            return None
+        print(f"  [+] Extracted {bin_path.name} to RAM disk; SHA-256 verified")
+
+        # Fill sidecar gaps from the verified bytes (manual and honeypot intake
+        # arrive without MalwareBazaar metadata)
+        for key in ("md5", "sha1"):
+            if not meta.get(key):
+                meta[key] = hashes[key]
+        if str(meta.get("file_type", "")).lower() in ("", "unknown"):
+            meta["file_type"] = file_ext
+        if not meta.get("file_size_bytes"):
+            meta["file_size_bytes"] = bin_path.stat().st_size
 
         # 3. Run tools against the RAM-disk binary
         print("  [1/4] FLOSS — string extraction...")
@@ -95,6 +170,7 @@ def analyze_sample(sha256: str) -> dict | None:
             pefile_result=pefile_result,
             meta=meta,
         )
+        analysis["sample"]["sha256_verified"] = True
 
         out_path = save_analysis(analysis)
         update_status(sha256, 'ANALYZED')
@@ -157,4 +233,4 @@ if __name__ == "__main__":
                 except Exception as exc:
                     print(f"  [!] Analysis for {h[:16]} generated an exception: {exc}")
     else:
-        analyze_sample(args.sha256)
+        sys.exit(0 if analyze_sample(args.sha256.strip().lower()) else 1)

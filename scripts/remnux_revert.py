@@ -19,11 +19,19 @@ pipeline uses. Only PVE_TOKEN_SECRET is required; the rest have defaults:
     REMNUX_VMID=<vmid>
     REMNUX_SNAPSHOT=clean-baseline
     REMNUX_SSH_HOST=remnux
+    REMNUX_REPO=/home/remnux/Mal-Intel-Pipeline
+    REMNUX_VENV=venv_remnux
 
 Usage:
     python scripts/remnux_revert.py             # full revert, waits for SSH
+    python scripts/remnux_revert.py --deploy    # full revert, then deploy committed pipeline/
     python scripts/remnux_revert.py --check     # read-only: token, snapshot, status
     python scripts/remnux_revert.py --no-start  # roll back, leave REMnux powered off
+
+--deploy copies `git archive HEAD pipeline` from this repo onto REMnux, records
+the commit in DEPLOYED_COMMIT, and smoke-tests the import with REMNUX_VENV. The
+snapshot then only has to change for tools and venvs, and REMnux never runs code
+that isn't committed. Uncommitted changes under pipeline/ are reported, not sent.
 """
 from __future__ import annotations
 
@@ -31,6 +39,7 @@ import argparse
 import json
 import logging
 import os
+import shlex
 import ssl
 import subprocess
 import sys
@@ -53,6 +62,8 @@ NODE = os.getenv("PVE_NODE", "<pve-node>")
 VMID = os.getenv("REMNUX_VMID", "<vmid>")
 SNAPSHOT = os.getenv("REMNUX_SNAPSHOT", "clean-baseline")
 SSH_HOST = os.getenv("REMNUX_SSH_HOST", "remnux")
+REMNUX_REPO = os.getenv("REMNUX_REPO", "/home/remnux/Mal-Intel-Pipeline")
+REMNUX_VENV = os.getenv("REMNUX_VENV", "venv_remnux")
 
 TASK_TIMEOUT = 180  # seconds for any single stop / rollback / start task
 
@@ -136,10 +147,54 @@ def wait_for_ssh(timeout: int) -> None:
     raise RevertError(f"{SSH_HOST} did not answer SSH within {timeout}s")
 
 
+# --- Code deploy -------------------------------------------------------------
+
+def _git(*args: str) -> str:
+    result = subprocess.run(["git", "-C", str(REPO_ROOT), *args],
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RevertError(f"git {' '.join(args)} failed: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def deploy_code() -> str:
+    """Replace REMnux's pipeline/ with the committed tree. Returns the short commit."""
+    commit = _git("rev-parse", "--short", "HEAD")
+    if _git("status", "--porcelain", "--", "pipeline"):
+        log.warning("uncommitted changes under pipeline/ are NOT deployed; deploying HEAD %s",
+                    commit)
+
+    repo = shlex.quote(REMNUX_REPO)
+    remote = (
+        f"set -e; cd {repo}; rm -rf pipeline; tar xf -; "
+        f"printf '%s\\n' {shlex.quote(commit)} > DEPLOYED_COMMIT; "
+        f"{shlex.quote(REMNUX_VENV)}/bin/python -c 'import pipeline.static_analysis.analyze'; "
+        "rm -f pipeline.db"  # the import creates an empty DB via init_db()
+    )
+    archive = subprocess.Popen(["git", "-C", str(REPO_ROOT), "archive", "HEAD", "pipeline"],
+                               stdout=subprocess.PIPE)
+    try:
+        result = subprocess.run(["ssh", "-o", "BatchMode=yes", SSH_HOST, remote],
+                                stdin=archive.stdout, capture_output=True, text=True,
+                                timeout=120)
+    except subprocess.TimeoutExpired:
+        archive.kill()
+        raise RevertError(f"deploy to {SSH_HOST} timed out after 120s") from None
+    finally:
+        archive.stdout.close()
+        archive_rc = archive.wait()
+    # Report the remote side first: if ssh died early, git archive only sees a broken pipe
+    if result.returncode != 0:
+        raise RevertError(f"deploy to {SSH_HOST} failed: {result.stderr.strip()[-400:]}")
+    if archive_rc != 0:
+        raise RevertError("git archive failed")
+    return commit
+
+
 # --- Entry points ------------------------------------------------------------
 
-def revert_remnux(start: bool = True, ssh_timeout: int = 180) -> float:
-    """Roll REMnux back to SNAPSHOT. Returns elapsed seconds."""
+def revert_remnux(start: bool = True, ssh_timeout: int = 180, deploy: bool = False) -> float:
+    """Roll REMnux back to SNAPSHOT, optionally deploy committed code. Returns elapsed seconds."""
     ctx = _context()
     began = time.monotonic()
 
@@ -154,6 +209,8 @@ def revert_remnux(start: bool = True, ssh_timeout: int = 180) -> float:
         _run("/status/start", ctx, "start")
         wait_for_ssh(ssh_timeout)
         log.info("%s answering SSH", SSH_HOST)
+        if deploy:
+            log.info("deployed pipeline/ at %s; import check passed", deploy_code())
 
     return time.monotonic() - began
 
@@ -175,14 +232,19 @@ def main() -> int:
                         help="roll back and leave REMnux powered off")
     parser.add_argument("--ssh-timeout", type=int, default=180,
                         help="seconds to wait for SSH after start (default: 180)")
+    parser.add_argument("--deploy", action="store_true",
+                        help="after the revert, deploy committed pipeline/ code to REMnux")
     args = parser.parse_args()
+    if args.deploy and (args.no_start or args.check):
+        parser.error("--deploy needs a running REMnux; it can't be combined with --no-start or --check")
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     try:
         if args.check:
             check()
         else:
-            elapsed = revert_remnux(start=not args.no_start, ssh_timeout=args.ssh_timeout)
+            elapsed = revert_remnux(start=not args.no_start, ssh_timeout=args.ssh_timeout,
+                                    deploy=args.deploy)
             log.info("revert complete in %.0fs", elapsed)
     except RevertError as exc:
         log.error("%s", exc)
