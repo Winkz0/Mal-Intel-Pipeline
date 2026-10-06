@@ -1,0 +1,5 @@
+# Mal-Intel-Pipeline — test tooling (CI and local).
+#   pip install -r requirements-dev.txt
+# Unit tests avoid the heavy runtime deps in requirements.txt; anything that needs
+# them imports lazily or uses a fake.
+pytest==9.1.1

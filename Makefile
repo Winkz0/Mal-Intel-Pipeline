@@ -1,4 +1,4 @@
-.PHONY: help setup lint compile scan clean dashboard
+.PHONY: help setup lint compile test scan clean dashboard
 
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
@@ -15,6 +15,9 @@ lint:  ## Lint the pipeline with ruff
 
 compile:  ## Byte-compile all sources (fast syntax check)
 	python -m compileall -q pipeline scripts dashboard.py reset_pipeline.py
+
+test:  ## Run the unit tests
+	python -m pytest
 
 scan:  ## Run the detect-secrets scan against the baseline
 	detect-secrets scan --baseline .secrets.baseline

@@ -12,75 +12,48 @@ Usage:
 import sys
 import logging
 import argparse
-import copy
 from pathlib import Path
 
-# 1. Truncation Helper Function
-def truncate_heavy_data(analysis_dict: dict, max_items: int = 500, max_str_len: int = 256) -> dict:
-    """
-    Creates a minified version of the JSON payload by slicing massive lists
-    and capping the character length of insanely long concatenated strings.
-    Prevents token-limit exceptions and saves API costs on packed/Golang malware.
-    """
-    truncated = copy.deepcopy(analysis_dict)
-    static = truncated.get("static_analysis", {})
-    
-    # 1. Cap FLOSS Strings
-    if "floss" in static and "notable_strings" in static["floss"]:
-        strings = static["floss"]["notable_strings"]
-        
-        # Cap the length of each individual string (Critical for Go binaries)
-        minified_strings = []
-        for s in strings:
-            if isinstance(s, str) and len(s) > max_str_len:
-                minified_strings.append(s[:max_str_len] + "... [TRUNCATED]")
-            else:
-                minified_strings.append(s)
-                
-        # Cap the total number of items
-        if len(minified_strings) > max_items:
-            static["floss"]["notable_strings"] = minified_strings[:max_items]
-            static["floss"]["_notice"] = f"[WARNING] Strings capped at {max_items} items & {max_str_len} chars each."
-        else:
-            static["floss"]["notable_strings"] = minified_strings
-            
-    # 2. Cap PEfile Imports
-    if "pefile" in static and "suspicious_imports" in static["pefile"]:
-        imports = static["pefile"]["suspicious_imports"]
-        if len(imports) > max_items:
-            static["pefile"]["suspicious_imports"] = imports[:max_items]
-            static["pefile"]["_notice"] = f"[WARNING] Imports truncated from {len(imports)} to {max_items}."
-            
-    # 3. Cap Capa Capabilities
-    if "capa" in static and "capabilities" in static["capa"]:
-        caps = static["capa"]["capabilities"]
-        if isinstance(caps, list) and len(caps) > max_items:
-            static["capa"]["capabilities"] = caps[:max_items]
-            
-    return truncated
-
-# 2. Pathing and Imports
+# 1. Pathing and Imports
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv
 load_dotenv(REPO_ROOT / "config" / "secrets.env")
 
-from pipeline.llm_synthesis.prompt_builder import build_synthesis_prompt, estimate_cost
+from pipeline.llm_synthesis.bundle import DEFAULT_CAPS, BundleError, build_bundle, save_bundle
+from pipeline.llm_synthesis.prompt_builder import (
+    DEFAULT_TEMPLATE,
+    PromptTooLarge,
+    estimate_cost,
+    render,
+)
 from pipeline.llm_synthesis.synthesizer import load_analysis, synthesize, save_synthesis
 from pipeline.llm_synthesis.checkpoint2 import run_checkpoint2
 
 logger = logging.getLogger(__name__)
 
-# 3. Core Logic with Fallback Integration
+BUNDLE_DIR = REPO_ROOT / "output" / "bundles"
+
+
+def build_model_input(analysis: dict, analyst_notes: str = ""):
+    """Bundle + rendered prompt. Caps are applied here, once, before any API call."""
+    bundle = build_bundle(analysis, caps=DEFAULT_CAPS, analyst_notes=analyst_notes)
+    return bundle, render(bundle, DEFAULT_TEMPLATE)
+
+# 2. Core Logic
 def process_synthesis(sha256: str, dry_run: bool, skip_checkpoint: bool, no_raw: bool):
     analysis = load_analysis(sha256)
     if not analysis:
         print(f"[!] No analysis found for {sha256[:16]}...")
         return False
 
-    prompt = build_synthesis_prompt(analysis)
-    cost = estimate_cost(prompt)
+    try:
+        bundle, rendered = build_model_input(analysis)
+    except (BundleError, PromptTooLarge) as e:
+        print(f"[!] Cannot build model input for {sha256[:16]}: {e}")
+        return False
+    cost = estimate_cost(rendered.prompt)
 
     analyst_notes = ""
     if not skip_checkpoint:
@@ -91,49 +64,43 @@ def process_synthesis(sha256: str, dry_run: bool, skip_checkpoint: bool, no_raw:
             dry_run = True
 
     if analyst_notes:
-        prompt += f"\n\n## Analyst Notes\n{analyst_notes}"
+        # Notes are model input, so they're part of the bundle (and its hash).
+        try:
+            bundle, rendered = build_model_input(analysis, analyst_notes)
+        except (BundleError, PromptTooLarge) as e:
+            print(f"[!] Cannot build model input for {sha256[:16]}: {e}")
+            return False
 
-    # Initial API Attempt
-    result = synthesize(analysis=analysis, prompt=prompt, dry_run=dry_run, cost_estimate=cost)
+    bundle_sha, _ = save_bundle(bundle, BUNDLE_DIR)
+    print(f"  [*] Bundle   : {bundle_sha[:16]}... | template {rendered.template_id} "
+          f"({rendered.template_sha256[:12]})")
 
-    # NEW: Catch the token limit error and trigger the fallback
-    if result.get("error") and ("prompt is too long" in result["error"].lower() or "maximum" in result["error"].lower()):
-        print(f"  [!] Token limit exceeded for {sha256[:8]}. Truncating heavy data and retrying...")
-        
-        # Shrink the data
-        minified_analysis = truncate_heavy_data(analysis, max_items=500)
-        
-        # Rebuild the prompt with the smaller data
-        minified_prompt = build_synthesis_prompt(minified_analysis)
-        if analyst_notes:
-            minified_prompt += f"\n\n## Analyst Notes\n{analyst_notes}"
-            
-        # Second API Attempt
-        result = synthesize(analysis=minified_analysis, prompt=minified_prompt, dry_run=dry_run, cost_estimate=cost)
-        
-        if not result.get("error"):
-            print("  [+] Retry successful! Sample minified and synthesized.")
+    result = synthesize(analysis=analysis, prompt=rendered.prompt, dry_run=dry_run, cost_estimate=cost)
+    result["bundle_sha256"] = bundle_sha
+    result["template"] = {"id": rendered.template_id, "sha256": rendered.template_sha256}
+    result["prompt_sha256"] = rendered.prompt_sha256
+    if analyst_notes:
+        result["analyst_notes"] = analyst_notes
 
-    # Final Error Check
     if result.get("error"):
         print(f"\n[!] Synthesis failed for {sha256[:16]}: {result['error']}")
         return False
-    
+
     if no_raw:
         result["raw_response"] = None
-    
+
     out_path = save_synthesis(result)
-    
+
     if not dry_run:
         from pipeline.utils.db import update_status
         update_status(sha256, 'SYNTHESIZED')
         print(f"  [+] Synthesis complete for {sha256[:16]}... -> {out_path.name}")
     else:
         print(f"  [~] DRY RUN complete for {sha256[:16]}... (DB state NOT advanced)")
-        
+
     return True
 
-# 4. CLI Execution
+# 3. CLI Execution
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO,
@@ -172,4 +139,6 @@ if __name__ == "__main__":
             except Exception as exc:
                 print(f"  [!] Synthesis for {h[:16]} generated an exception: {exc}")
     else:
-        process_synthesis(args.sha256, args.dry_run, args.skip_checkpoint, args.no_raw)
+        # Non-zero exit so run_host_pipeline.sh stops instead of reporting on stale output.
+        ok = process_synthesis(args.sha256, args.dry_run, args.skip_checkpoint, args.no_raw)
+        sys.exit(0 if ok else 1)

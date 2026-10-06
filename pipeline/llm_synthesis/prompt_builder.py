@@ -1,140 +1,145 @@
 """
 prompt_builder.py
-Constructs structured prompts from M6 analysis JSON for Claude API synthesis.
-Designed to produce analyst-quality output, not generic summaries.
+Renders a synthesis bundle (bundle.py) into prompt text with a versioned template.
+
+Templates live in pipeline/llm_synthesis/templates/<template_id>.txt and use
+string.Template `$name` placeholders, so the JSON braces in the output spec need
+no escaping. Each template ID has a field formatter here; the template's SHA-256
+(raw file bytes) is reported with every render so runs can record exactly what
+was used.
+
+synthesis_v1 reproduces the pre-M13-v2 prompt byte for byte when the bundle is
+built with bundle.LEGACY_CAPS (see legacy_prompt.py and
+scripts/check_template_parity.py).
 """
 
+import hashlib
+from pathlib import Path
+from string import Template
+from typing import NamedTuple
+
+from pipeline.llm_synthesis.bundle import LEGACY_CAPS, build_bundle
+
+TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+DEFAULT_TEMPLATE = "synthesis_v1"
+
+# Fail closed instead of sending (and retrying) an oversized prompt. With the
+# default caps a normal bundle renders to well under 50k characters.
+MAX_PROMPT_CHARS = 200_000
+
+
+class TemplateError(ValueError):
+    """Unknown template or a template file that can't be used as-is."""
+
+
+class PromptTooLarge(ValueError):
+    """Rendered prompt exceeds MAX_PROMPT_CHARS."""
+
+
+class Rendered(NamedTuple):
+    prompt: str
+    template_id: str
+    template_sha256: str
+    prompt_sha256: str
+
+
+# ── templates ───────────────────────────────────────────────────────────────
+
+def load_template(template_id: str) -> tuple[str, str]:
+    """
+    Return (template_text, sha256_of_file_bytes).
+    One trailing LF is stripped so the file can end with a normal newline.
+    CR bytes are rejected: a CRLF checkout would silently change the prompt.
+    """
+    if template_id not in _FORMATTERS:
+        raise TemplateError(f"unknown template: {template_id}")
+    raw = (TEMPLATE_DIR / f"{template_id}.txt").read_bytes()
+    if b"\r" in raw:
+        raise TemplateError(f"{template_id}.txt has CR line endings; expected LF only")
+    text = raw.decode("utf-8")
+    if text.endswith("\n"):
+        text = text[:-1]
+    return text, hashlib.sha256(raw).hexdigest()
+
+
+def _bullets(items, fmt, empty: str) -> str:
+    return "\n".join(fmt(x) for x in items) or empty
+
+
+def _fields_v1(b: dict) -> dict:
+    s, d, p, f, c, i = (b["sample"], b["diec"], b["pefile"], b["floss"], b["capa"], b["iocs"])
+    return {
+        "sha256": f"{s['sha256']}",
+        "file_name": f"{s['file_name']}",
+        "file_type": f"{s['file_type']}",
+        "detected_type": f"{d['file_type']}",
+        "family": f"{s['malware_family']}",
+        "tags": ", ".join(s["tags"]) or "none",
+        "architecture": f"{p['architecture']}",
+        "compiler": f"{d['compiler']}",
+        "packer": f"{d['packer']}",
+        "is_packed": f"{d['is_packed']}",
+        "compile_time": f"{p['compile_timestamp']}",
+        "imphash": f"{p['imphash']}",
+        "total_static": f"{f['total_static']}",
+        "total_decoded": f"{f['total_decoded']}",
+        "notable_strings": _bullets(f["notable_strings"], lambda x: f"  - {x}", "  none"),
+        "capabilities": _bullets(
+            c["capabilities"], lambda x: f"  - {x}",
+            "  none detected (file type may be unsupported by Capa)"),
+        "attack_ttps": _bullets(
+            c["attack_ttps"],
+            lambda t: f"  - [{t.get('id','')}] {t.get('technique','')} ({t.get('tactic','')})",
+            "  none mapped"),
+        "mbc_behaviors": _bullets(
+            c["mbc_behaviors"],
+            lambda m: f"  - {m.get('objective','')}: {m.get('behavior','')}",
+            "  none mapped"),
+        "suspicious_imports": _bullets(
+            p["suspicious_imports"], lambda x: f"  - {x}",
+            "  none (not a PE or no suspicious imports)"),
+        "high_entropy": _bullets(p["high_entropy_sections"], lambda x: f"  - {x}", "  none"),
+        "ips": ", ".join(i["ips"]) or "none",
+        "urls": ", ".join(i["urls"]) or "none",
+        "commands": ", ".join(i["commands"]) or "none",
+    }
+
+
+def _notes_v1(b: dict) -> str:
+    notes = b.get("analyst_notes") or ""
+    return f"\n\n## Analyst Notes\n{notes}" if notes else ""
+
+
+# template_id -> (field formatter, trailer)
+_FORMATTERS = {
+    "synthesis_v1": (_fields_v1, _notes_v1),
+}
+
+
+def available_templates() -> list[str]:
+    return sorted(_FORMATTERS)
+
+
+# ── render ──────────────────────────────────────────────────────────────────
+
+def render(bundle: dict, template_id: str = DEFAULT_TEMPLATE) -> Rendered:
+    """Render a bundle with a versioned template. Raises PromptTooLarge."""
+    text, template_sha = load_template(template_id)
+    fields, trailer = _FORMATTERS[template_id]
+    prompt = Template(text).substitute(fields(bundle)) + trailer(bundle)
+    if len(prompt) > MAX_PROMPT_CHARS:
+        raise PromptTooLarge(
+            f"rendered prompt is {len(prompt):,} chars (limit {MAX_PROMPT_CHARS:,})")
+    prompt_sha = hashlib.sha256(prompt.encode("utf-8", "surrogatepass")).hexdigest()
+    return Rendered(prompt, template_id, template_sha, prompt_sha)
 
 
 def build_synthesis_prompt(analysis: dict) -> str:
-    """
-    Build the main synthesis prompt from a normalized analysis document.
-    Structures the context so Claude can produce actionable intel output.
-    """
-    sample = analysis.get("sample", {})
-    static = analysis.get("static_analysis", {})
-    iocs = analysis.get("ioc_candidates", {})
+    """Back-compat wrapper: the legacy prompt, via bundle + synthesis_v1."""
+    return render(build_bundle(analysis, caps=LEGACY_CAPS), "synthesis_v1").prompt
 
-    sha256 = sample.get("sha256", "unknown")
-    family = sample.get("malware_family", "unknown")
-    file_type = sample.get("file_type", "unknown")
-    file_name = sample.get("file_name", "unknown")
-    tags = ", ".join(sample.get("tags", [])) or "none"
 
-    # diec findings
-    diec = static.get("diec", {})
-    detected_type = diec.get("file_type") or "unknown"
-    compiler = diec.get("compiler") or "unknown"
-    packer = diec.get("packer") or "none detected"
-    is_packed = diec.get("is_packed", False)
-
-    # pefile findings
-    pe = static.get("pefile", {})
-    is_pe = pe.get("is_pe", False)
-    architecture = pe.get("architecture") or "unknown"
-    compile_time = pe.get("compile_timestamp") or "unknown"
-    imphash = pe.get("imphash") or "n/a"
-    suspicious_imports = pe.get("suspicious_imports", [])
-    high_entropy = pe.get("high_entropy_sections", [])
-
-    # FLOSS findings
-    floss = static.get("floss", {})
-    notable_strings = floss.get("notable_strings", [])
-    total_static = floss.get("total_static", 0)
-    total_decoded = floss.get("total_decoded", 0)
-
-    # Capa findings
-    capa = static.get("capa", {})
-    capabilities = capa.get("capabilities", [])
-    attack_ttps = capa.get("attack_ttps", [])
-    mbc_behaviors = capa.get("mbc_behaviors", [])
-
-    # IOC candidates
-    ips = iocs.get("ips", [])
-    urls = iocs.get("urls", [])
-    commands = iocs.get("commands", [])
-
-    prompt = f"""You are a senior malware analyst. Analyze the following static analysis findings and produce structured threat intelligence output.
-
-## Sample Metadata
-- SHA256: {sha256}
-- File Name: {file_name}
-- File Type: {file_type} (detected: {detected_type})
-- Suspected Family: {family}
-- Tags: {tags}
-
-## File Characteristics
-- Architecture: {architecture}
-- Compiler/Package: {compiler}
-- Packer: {packer}
-- Is Packed: {is_packed}
-- Compile Timestamp: {compile_time}
-- Import Hash: {imphash}
-
-## String Analysis (FLOSS)
-- Total Static Strings: {total_static}
-- Decoded Strings: {total_decoded}
-- Notable Strings:
-{chr(10).join(f"  - {s}" for s in notable_strings[:50]) or "  none"}
-
-## Detected Capabilities (Capa)
-{chr(10).join(f"  - {c}" for c in capabilities[:30]) or "  none detected (file type may be unsupported by Capa)"}
-
-## MITRE ATT&CK TTPs
-{chr(10).join(f"  - [{t.get('id','')}] {t.get('technique','')} ({t.get('tactic','')})" for t in attack_ttps) or "  none mapped"}
-
-## MBC Behaviors
-{chr(10).join(f"  - {b.get('objective','')}: {b.get('behavior','')}" for b in mbc_behaviors) or "  none mapped"}
-
-## Suspicious Imports
-{chr(10).join(f"  - {i}" for i in suspicious_imports[:30]) or "  none (not a PE or no suspicious imports)"}
-
-## High Entropy Sections
-{chr(10).join(f"  - {s}" for s in high_entropy) or "  none"}
-
-## IOC Candidates
-- IPs: {', '.join(ips[:20]) or 'none'}
-- URLs: {', '.join(urls[:20]) or 'none'}
-- Commands: {', '.join(commands[:20]) or 'none'}
-
----
-
-Produce the following output in valid JSON format with these exact keys:
-
-{{
-  "ttp_mapping": {{
-    "narrative": "2-3 paragraph analysis of observed TTPs and behavioral patterns",
-    "techniques": [
-      {{"id": "TXXXX", "name": "technique name", "tactic": "tactic", "evidence": "what in the sample supports this"}}
-    ],
-    "confidence": "high|medium|low",
-    "reasoning": "why you assigned this confidence level"
-  }},
-  "yara_rule": {{
-    "rule": "complete YARA rule as a string",
-    "confidence": "high|medium|low",
-    "reasoning": "explanation of string/pattern selections and why they are distinctive"
-  }},
-  "sigma_rule": {{
-    "rule": "complete Sigma rule in YAML format as a string",
-    "log_sources": ["list of applicable log sources"],
-    "crowdstrike_notes": "how this maps to CrowdStrike Falcon telemetry",
-    "splunk_notes": "equivalent Splunk SPL search logic",
-    "confidence": "high|medium|low",
-    "reasoning": "explanation of detection logic"
-  }},
-  "technical_report": {{
-    "executive_summary": "3-5 sentence non-technical summary for stakeholders",
-    "technical_summary": "detailed technical findings narrative for analysts",
-    "key_indicators": ["list of highest-confidence IOCs"],
-    "recommended_actions": ["prioritized list of response/hunting actions"]
-  }}
-}}
-
-Return only valid JSON. No preamble, no markdown code blocks, no explanation outside the JSON structure."""
-
-    return prompt
-
+# ── cost estimate (repriced per model in D2.2) ──────────────────────────────
 
 def estimate_tokens(prompt: str) -> int:
     """Rough token estimate — ~4 chars per token for English text."""

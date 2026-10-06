@@ -227,20 +227,12 @@ samples/registry.json
 !samples/quarantine/.gitkeep
 !samples/analyzed/.gitkeep
 
-# Generated output
-output/reports/*
-output/rules/yara/*
-output/rules/sigma/*
-output/logs/*
-output/logs/cache/
-output/graphs
-output/analysis/
-output/stix/
-output/dynamic_queue/
-!output/reports/.gitkeep
-!output/rules/yara/.gitkeep
-!output/rules/sigma/.gitkeep
-!output/logs/.gitkeep
+# Generated output — everything under output/ is generated and may carry
+# attacker-controlled strings (analysis, bundles, runs, eval, queue). Ignore all
+# of it; only .gitkeep placeholders are tracked.
+output/**
+!output/**/
+!output/**/.gitkeep
 
 # Checkpoint state
 checkpoints/*.json
