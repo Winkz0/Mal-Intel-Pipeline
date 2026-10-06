@@ -1,23 +1,24 @@
 """
 synthesizer.py
-Claude API integration for LLM synthesis.
-Includes dry-run mode, cost estimation, and structured output parsing.
+Runs one synthesis through an engine (engines/) and records it.
+
+run_synthesis(): engine call -> raw response + manifest in output/runs/<run_id>/
+-> JSON parse -> YARA string fix-up -> report-compatible result dict.
+Engines never parse; this module never talks to an API directly.
 """
 
-import os
 import json
 import logging
 import re
 from pathlib import Path
-from datetime import datetime, timezone
 
-import anthropic
+from pipeline.llm_synthesis import manifest as mf
+from pipeline.llm_synthesis.pricing import actual_cost
 
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = REPO_ROOT / "output" / "reports"
-MODEL = "claude-sonnet-4-5"
 
 
 def load_analysis(sha256: str) -> dict | None:
@@ -33,152 +34,177 @@ def load_analysis(sha256: str) -> dict | None:
     with open(analysis_path, "r") as f:
         return json.load(f)
 
+
 def validate_yara_strings(yara_rule: str) -> str:
     """
-    Check for unreferenced strings in a YARA rule.
-    If a declared string isn't in the condition, log a warning
-    and drop it from the strings section.
-    Returns the (possibly modified) YARA rule string.
+    Drop string declarations the condition never references, so the rule
+    compiles (YARA rejects unreferenced strings). A string counts as referenced
+    when the condition names it with $, #, @ or !, matches a wildcard set such
+    as ($prefix*), or uses `them`. Anonymous strings and multi-line
+    declarations are left alone. Returns the (possibly modified) rule.
+
+    Fixed in M13 v2: the previous version had the test inverted and removed
+    the strings the condition *did* reference.
     """
     if not yara_rule or yara_rule == "[DRY RUN]":
         return yara_rule
 
-    # Extract declared string names from strings: section
-    declared = re.findall(r'(\$\w+)\s*=', yara_rule)
-    if not declared:
+    sections = re.search(r"\bstrings\s*:(.*?)\bcondition\s*:(.*)", yara_rule, re.DOTALL)
+    if not sections:
+        return yara_rule
+    strings_text, condition_text = sections.group(1), sections.group(2)
+
+    declared = re.findall(r"^\s*\$(\w+)\s*=", strings_text, re.MULTILINE)
+    explicit = set(re.findall(r"[$#@!](\w+)(?![\w*])", condition_text))
+    wildcards = re.findall(r"\$(\w*)\*", condition_text)
+
+    undefined = sorted(n for n in explicit if n not in declared)
+    if undefined:
+        # The condition names strings that were never declared. The rule won't
+        # compile; that's a model error to surface, not something to patch.
+        logger.warning(f"YARA: condition references undeclared strings: {undefined}")
+
+    if not declared or re.search(r"\bthem\b", condition_text):
         return yara_rule
 
-    # Extract the condition: section
-    condition_match = re.search(r'condition\s*:(.*)', yara_rule, re.DOTALL)
-    if not condition_match:
+    def referenced(name: str) -> bool:
+        return name in explicit or any(name.startswith(w) for w in wildcards)
+
+    unreferenced = [n for n in declared if not referenced(n)]
+    if not unreferenced:
         return yara_rule
 
-    condition_text = condition_match.group(1)
-
-    # Check for wildcard references that cover all strings
-    if re.search(r'(any|all)\s+of\s+(them|\(\s*\$)', condition_text):
-        return yara_rule
-
-    # Build a set of prefixes used in wildcard references like "2 of ($api_*)"
-    wildcard_prefixes = set()
-    for match in re.finditer(r'of\s*\(\s*(\$\w+?)_\*\s*\)', condition_text):
-        wildcard_prefixes.add(match.group(1) + "_")
-
-    unreferenced = []
-    for var in declared:
-        if var not in condition_text:
+    new_strings, removed = strings_text, []
+    for name in unreferenced:
+        line = re.search(r"^[ \t]*\$" + re.escape(name) + r"\s*=.*(?:\n|$)", new_strings, re.MULTILINE)
+        if not line:
             continue
-        # Check if this string is covered by a wildcard references
-        covered_by_wildcard = False
-        for prefix in wildcard_prefixes:
-            if var.startswith(prefix):
-                covered_by_wildcard = True
-                break
-        if not covered_by_wildcard:
-            unreferenced.append(var)
+        decl = line.group(0)
+        # Leave multi-line hex/regex declarations alone rather than cut them in half.
+        if decl.count("{") != decl.count("}"):
+            continue
+        new_strings = new_strings[:line.start()] + new_strings[line.end():]
+        removed.append(f"${name}")
 
-    if unreferenced:
-        logger.warning(f"YARA: unreferenced strings found: {unreferenced}")
-        # Remove unreferenced strings from the rule
-        for var in unreferenced:
-            # Remove the full line declaring this string
-            yara_rule = re.sub(
-                r'\n\s*' + re.escape(var) + r'\s*=.*', '', yara_rule
-            )
-        logger.info(f"YARA: removed {len(unreferenced)} unreferenced strings")
-
+    if removed:
+        logger.warning(f"YARA: removed unreferenced strings: {removed}")
+        yara_rule = yara_rule[:sections.start(1)] + new_strings + yara_rule[sections.end(1):]
     return yara_rule
 
-def synthesize(
+
+def parse_model_json(text: str) -> dict:
+    """
+    Parse the model's JSON answer. Tolerates a markdown fence or stray prose
+    around a single top-level object. Raises ValueError otherwise.
+    """
+    clean = (text or "").strip()
+    fence = re.match(r"^```[a-zA-Z0-9_-]*\s*\n(.*?)\n?```\s*$", clean, re.DOTALL)
+    if fence:
+        clean = fence.group(1).strip()
+    try:
+        obj = json.loads(clean)
+    except json.JSONDecodeError:
+        first, last = clean.find("{"), clean.rfind("}")
+        if first == -1 or last <= first:
+            raise ValueError("no JSON object found in model output") from None
+        try:
+            obj = json.loads(clean[first:last + 1])
+        except json.JSONDecodeError as e:
+            raise ValueError(f"model output is not valid JSON: {e}") from None
+    if not isinstance(obj, dict):
+        raise ValueError(f"model output is JSON {type(obj).__name__}, expected an object")
+    return obj
+
+
+def run_synthesis(
     analysis: dict,
-    prompt: str,
-    dry_run: bool = False,
-    cost_estimate: dict = None,
+    rendered,
+    bundle_sha: str,
+    bundle_path: Path,
+    engine,
+    cost_estimate: dict,
+    analyst_notes: str = "",
+    runs_dir: Path = None,
+    mode: str = "prod",
 ) -> dict:
     """
-    Send prompt to Claude API and return structured synthesis result.
-    dry_run=True skips the API call and returns a placeholder.
-    Raw response is always logged to output/logs/raw_responses regardless
-    of whether raw_response is retained in the synthesis JSON
+    Run one synthesis and write its run directory. Returns the report-compatible
+    result dict; result["error"] is set on any failure (the manifest is written
+    either way, with status "error").
     """
-    result = {
-        "schema_version": "1.0",
-        "synthesized_at": datetime.now(timezone.utc).isoformat(),
-        "model": MODEL,
-        "dry_run": dry_run,
-        "cost_estimate": cost_estimate,
-        "sample": analysis.get("sample", {}),
-        "synthesis": None,
-        "error": None,
-        "raw_response": None,
-    }
+    runs_dir = Path(runs_dir or mf.RUNS_DIR)
+    started = mf.utc_now()
+    run_id = mf.new_run_id(bundle_sha, engine.id, started)
+    run_dir = runs_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
 
-    if dry_run:
-        logger.info("Dry run mode — skipping Claude API call")
-        result["synthesis"] = {
-            "ttp_mapping": {"narrative": "[DRY RUN]", "techniques": [], "confidence": "n/a", "reasoning": ""},
-            "yara_rule": {"rule": "[DRY RUN]", "confidence": "n/a", "reasoning": ""},
-            "sigma_rule": {"rule": "[DRY RUN]", "log_sources": [], "crowdstrike_notes": "", "splunk_notes": "", "confidence": "n/a", "reasoning": ""},
-            "technical_report": {"executive_summary": "[DRY RUN]", "technical_summary": "", "key_indicators": [], "recommended_actions": []},
-        }
-        return result
+    logger.info(f"Run {run_id}: engine {engine.id}")
+    er = engine.run(rendered.prompt)
+    finished = mf.utc_now()
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        result["error"] = "ANTHROPIC_API_KEY not set"
-        logger.error(result["error"])
-        return result
+    raw_path = None
+    if er.raw is not None:
+        raw_path = mf.write_json_atomic(run_dir / "raw_response.json", er.raw)
 
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-
-        logger.info(f"Sending synthesis request to Claude ({MODEL})...")
-
-        message = client.messages.create(
-            model=MODEL,
-            max_tokens=8192,
-            messages=[{"role": "user", "content": prompt}]
-        )
-
-        raw = message.content[0].text
-        result["raw_response"] = raw
-        
-        # Dump raw response to log file
-        raw_log_dir = REPO_ROOT / "output" / "logs" / "raw_responses"
-        raw_log_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        sample_sha = analysis.get("sample", {}).get("sha256", "unknown")
-        raw_log_path = raw_log_dir / f"{sample_sha}_{ts}.json"
-        with open(raw_log_path, "w") as rl:
-            json.dump({"model": MODEL, "raw_text": raw, "timestamp": ts}, rl, indent=2)
-        logger.info(f"Raw response logged: {raw_log_path}")
-
-        # Strip markdown code blocks if Claude wraps JSON anyway
-        clean = raw.strip()
-        if clean.startswith("```"):
-            clean = clean.split("```")[1]
-            if clean.startswith("json"):
-                clean = clean[4:]
-        clean = clean.strip()
-
-        result["synthesis"] = json.loads(clean)
-        logger.info("Synthesis complete")
-
-        # Validate YARA rule — remove unreferenced strings
-        yara_section = result["synthesis"].get("yara_rule", {})
-        if isinstance(yara_section, dict) and "rule" in yara_section:
+    error = er.error
+    synthesis = None
+    if error is None:
+        try:
+            synthesis = parse_model_json(er.text)
+        except ValueError as e:
+            error = f"Failed to parse model response as JSON: {e}"
+    if synthesis is not None:
+        yara_section = synthesis.get("yara_rule", {})
+        if isinstance(yara_section, dict) and isinstance(yara_section.get("rule"), str):
             yara_section["rule"] = validate_yara_strings(yara_section["rule"])
 
-    except json.JSONDecodeError as e:
-        result["error"] = f"Failed to parse Claude response as JSON: {e}"
-        logger.error(result["error"])
-    except anthropic.APIError as e:
-        result["error"] = f"Anthropic API error: {e}"
-        logger.error(result["error"])
-    except Exception as e:
-        result["error"] = f"Unexpected error: {e}"
-        logger.error(result["error"])
+    manifest_path = run_dir / "manifest.json"
+    manifest = mf.build_manifest(
+        run_id=run_id,
+        mode=mode,
+        status="error" if error else "ok",
+        error=error,
+        sample_sha256=analysis.get("sample", {}).get("sha256"),
+        bundle={"sha256": bundle_sha, "path": mf.rel(bundle_path)},
+        template={"id": rendered.template_id, "sha256": rendered.template_sha256},
+        prompt_sha256=rendered.prompt_sha256,
+        output_schema=None,  # D2.3
+        engine={"id": er.engine_id, "sdk": er.sdk},
+        model={"requested": er.model_requested, "reported": er.model_reported},
+        params=er.params,
+        defaults_assumed=er.defaults_assumed,
+        usage=er.usage,
+        cost={"estimate": cost_estimate,
+              "actual_usd": actual_cost(er.usage, er.model_requested) if er.usage else None},
+        response={"id": er.response_id, "stop_reason": er.stop_reason},
+        timing={"started_at": started.isoformat(), "finished_at": finished.isoformat(),
+                "duration_ms": int((finished - started).total_seconds() * 1000)},
+        raw_response_path=mf.rel(raw_path) if raw_path else None,
+        validation={"parsed_json": synthesis is not None, "schema": None},  # schema: D2.3
+        analyst_notes_present=bool(analyst_notes),
+        pipeline=mf.pipeline_commit(),
+    )
+    mf.write_json_atomic(manifest_path, manifest)
 
+    result = {
+        "schema_version": "1.0",
+        "synthesized_at": finished.isoformat(),
+        "model": er.model_reported or er.model_requested or engine.id,
+        "dry_run": engine.id == "dry-run",
+        "cost_estimate": cost_estimate,
+        "sample": analysis.get("sample", {}),
+        "synthesis": synthesis,
+        "error": error,
+        "raw_response": er.text,
+        "bundle_sha256": bundle_sha,
+        "template": {"id": rendered.template_id, "sha256": rendered.template_sha256},
+        "prompt_sha256": rendered.prompt_sha256,
+        "manifest": {"run_id": run_id, "path": mf.rel(manifest_path)},
+    }
+    if analyst_notes:
+        result["analyst_notes"] = analyst_notes
+    if error:
+        logger.error(f"Run {run_id} failed: {error}")
     return result
 
 

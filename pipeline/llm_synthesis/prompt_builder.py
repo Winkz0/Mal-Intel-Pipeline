@@ -139,30 +139,6 @@ def build_synthesis_prompt(analysis: dict) -> str:
     return render(build_bundle(analysis, caps=LEGACY_CAPS), "synthesis_v1").prompt
 
 
-# ── cost estimate (repriced per model in D2.2) ──────────────────────────────
-
-def estimate_tokens(prompt: str) -> int:
-    """Rough token estimate — ~4 chars per token for English text."""
-    return len(prompt) // 4
-
-
-def estimate_cost(prompt: str, model: str = "claude-sonnet-4-5") -> dict:
-    """
-    Estimate API cost before sending.
-    Based on current Anthropic pricing for Sonnet.
-    Input: $3/MTok, Output: $15/MTok
-    """
-    input_tokens = estimate_tokens(prompt)
-    # Assume ~2000 output tokens for a full synthesis response
-    output_tokens = 2000
-
-    input_cost = (input_tokens / 1_000_000) * 3.0
-    output_cost = (output_tokens / 1_000_000) * 15.0
-    total_cost = input_cost + output_cost
-
-    return {
-        "model": model,
-        "estimated_input_tokens": input_tokens,
-        "estimated_output_tokens": output_tokens,
-        "estimated_cost_usd": round(total_cost, 6),
-    }
+# ── cost estimate ───────────────────────────────────────────────────────────
+# Moved to pricing.py (per-model prices); re-exported for existing imports.
+from pipeline.llm_synthesis.pricing import estimate_cost, estimate_tokens  # noqa: E402,F401

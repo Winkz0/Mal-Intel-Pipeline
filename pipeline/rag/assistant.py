@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 import anthropic
 
+from pipeline.llm_synthesis.engines.api import extract_text
 from pipeline.rag.retriever import retrieve, format_context
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,8 @@ logger = logging.getLogger(__name__)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(REPO_ROOT / "config" / "secrets.env")
 
-MODEL = "claude-sonnet-4-5"
+# claude-sonnet-4-5 retires 2026-11-30; see pipeline/llm_synthesis/engines/api.py
+MODEL = "claude-sonnet-5-5"
 
 SYSTEM_PROMPT = """You are an analyst assistant for the Mal-Intel-Pipeline, a malware intelligence and analysis platform.
 
@@ -90,12 +92,14 @@ def ask(
 
         message = client.messages.create(
             model=MODEL,
-            max_tokens=4096,
+            max_tokens=8192,  # adaptive thinking counts against this
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
         )
 
-        result["answer"] = message.content[0].text
+        result["answer"] = extract_text(message)
+        if message.stop_reason == "max_tokens":
+            result["answer"] += "\n\n[answer truncated at max_tokens]"
 
     except anthropic.APIError as e:
         result["error"] = f"Claude API error: {e}"
