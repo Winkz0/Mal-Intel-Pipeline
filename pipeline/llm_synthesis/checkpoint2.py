@@ -49,7 +49,8 @@ def run_checkpoint2(analysis: dict, cost_estimate: dict) -> tuple[bool, str]:
     print(f"  Model    : {cost_estimate.get('model', 'unknown')}")
     print(f"  Input    : ~{cost_estimate.get('estimated_input_tokens', 0):,} tokens")
     print(f"  Output   : ~{cost_estimate.get('estimated_output_tokens', 0):,} tokens")
-    print(f"  Est. Cost: ${cost_estimate.get('estimated_cost_usd', 0):.6f} USD")
+    est = cost_estimate.get("estimated_cost_usd")
+    print(f"  Est. Cost: {f'${est:.6f} USD' if est is not None else 'unknown (model not in price table)'}")
 
     print("\n  Options:")
     print("  [y] Proceed with synthesis")

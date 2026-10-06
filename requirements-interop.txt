@@ -1,0 +1,4 @@
+# CI only: interop test of the Vivo's stdlib MCP server (vivo/synthesis_queue_mcp)
+# against the official MCP Python client. Not installed on the Vivo or pipeline;
+# tests/test_vivo_queue.py skips the interop test when it's absent.
+mcp==2.3.0

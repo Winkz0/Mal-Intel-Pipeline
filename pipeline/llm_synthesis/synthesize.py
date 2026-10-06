@@ -9,6 +9,7 @@ Usage:
     python synthesize.py <sha256> --dry-run        # same as --engine dry-run
     python synthesize.py <sha256> --engine api --model claude-sonnet-5-5
     python synthesize.py <sha256> --eval LABEL [--analysis PATH]   # side-effect-free
+    python synthesize.py <sha256> --engine desktop                 # queue for Claude Desktop
 """
 
 import sys
@@ -31,6 +32,7 @@ from pipeline.llm_synthesis.pricing import estimate_cost
 from pipeline.llm_synthesis.prompt_builder import DEFAULT_TEMPLATE, PromptTooLarge, render
 from pipeline.llm_synthesis.synthesizer import load_analysis, run_synthesis, save_synthesis
 from pipeline.llm_synthesis.checkpoint2 import run_checkpoint2
+from pipeline.llm_synthesis import desktop_queue
 from pipeline.utils import run_context
 
 logger = logging.getLogger(__name__)
@@ -68,7 +70,8 @@ def process_synthesis(sha256: str, engine_id: str, skip_checkpoint: bool, no_raw
     except (BundleError, PromptTooLarge) as e:
         print(f"[!] Cannot build model input for {sha256[:16]}: {e}")
         return False
-    cost = estimate_cost(rendered.prompt, model if engine_id == "api" else "dry-run")
+    cost_model = {"api": model, "desktop": "desktop-mcp"}.get(engine_id, "dry-run")
+    cost = estimate_cost(rendered.prompt, cost_model)
 
     analyst_notes = ""
     if not skip_checkpoint:
@@ -92,6 +95,22 @@ def process_synthesis(sha256: str, engine_id: str, skip_checkpoint: bool, no_raw
     else:
         bundle_dir, runs_dir, mode = BUNDLE_DIR, None, "prod"
     bundle_sha, bundle_path = save_bundle(bundle, bundle_dir)
+
+    if engine_id == "desktop":
+        # D2.6: no API call here. The request waits in the queue for the Vivo to pull;
+        # scripts/queue_import.py creates the run when the answer comes back.
+        qdir = desktop_queue.queue_root(REPO_ROOT, eval_label)
+        path, created = desktop_queue.export_request(
+            qdir, bundle_sha, rendered, analysis.get("sample", {}),
+            analyst_notes_present=bool(analyst_notes), mode=mode, eval_label=eval_label)
+        state = "queued" if created else "already queued"
+        print(f"  [*] Bundle   : {bundle_sha[:16]}... | template {rendered.template_id} "
+              f"({rendered.template_sha256[:12]}) | engine desktop")
+        print(f"  [+] {state.capitalize()} for Claude Desktop: {path.relative_to(REPO_ROOT)}")
+        print("      Next: Vivo `queue_transfer.py pull`, answer in Desktop, `queue_transfer.py push`,")
+        print("      then `python scripts/queue_import.py --model \"<model selected in Desktop>\"`"
+              + (f" --eval {eval_label}" if eval_label else ""))
+        return True
     engine = get_engine(engine_id, model=model) if engine_id == "api" else get_engine(engine_id)
     print(f"  [*] Bundle   : {bundle_sha[:16]}... | template {rendered.template_id} "
           f"({rendered.template_sha256[:12]}) | engine {engine.id}")
@@ -149,7 +168,8 @@ if __name__ == "__main__":
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("sha256", nargs="?", help="SHA256 of sample to synthesize")
     group.add_argument("--all", action="store_true", help="Synthesize all samples pending synthesis")
-    parser.add_argument("--engine", choices=ENGINE_IDS, default="api", help="Synthesis engine (default: api)")
+    parser.add_argument("--engine", choices=(*ENGINE_IDS, "desktop"), default="api",
+                        help="Synthesis engine (default: api; desktop = queue for Claude Desktop)")
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"API model (default: {DEFAULT_MODEL})")
     parser.add_argument("--dry-run", action="store_true", help="Same as --engine dry-run")
     parser.add_argument("--skip-checkpoint", action="store_true", help="Skip checkpoint #2 review")

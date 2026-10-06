@@ -11,10 +11,10 @@ setup:  ## Create venv and install dependencies
 	@echo "Next: cp config/secrets.env.template config/secrets.env and fill in your keys"
 
 lint:  ## Lint the pipeline with ruff
-	ruff check pipeline scripts
+	ruff check pipeline scripts vivo tests
 
 compile:  ## Byte-compile all sources (fast syntax check)
-	python -m compileall -q pipeline scripts dashboard.py reset_pipeline.py
+	python -m compileall -q pipeline scripts vivo dashboard.py reset_pipeline.py
 
 test:  ## Run the unit tests
 	python -m pytest

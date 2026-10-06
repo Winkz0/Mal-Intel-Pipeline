@@ -1,0 +1,6 @@
+# Vivo-side venv for the synthesis-queue MCP server and queue_transfer.py (M13 v2, D2.6).
+#   py -3.14 -m venv C:\Tools\Dev\synthesis-queue\.venv
+#   C:\Tools\Dev\synthesis-queue\.venv\Scripts\pip install -r vivo\requirements.txt
+# The server is standard library only; jsonschema is for the pipeline's own
+# output_validation (same pin as requirements.txt).
+jsonschema==4.26.0

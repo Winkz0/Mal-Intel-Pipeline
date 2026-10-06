@@ -41,10 +41,12 @@ def _price(model: str, batch: bool):
 
 
 def estimate_cost(prompt: str, model: str = "claude-sonnet-5-5", batch: bool = False) -> dict:
-    """Pre-call estimate shown at checkpoint #2. Dry runs cost nothing."""
+    """Pre-call estimate shown at checkpoint #2. Dry runs and the Desktop inbox
+    (subscription, no per-call bill) cost nothing at the margin."""
+    free = model in ("dry-run", "desktop-mcp")
     input_tokens = estimate_tokens(prompt)
     output_tokens = 0 if model == "dry-run" else ESTIMATED_OUTPUT_TOKENS
-    price = (0.0, 0.0) if model == "dry-run" else _price(model, batch)
+    price = (0.0, 0.0) if free else _price(model, batch)
     cost = None
     if price is not None:
         cost = round(input_tokens / 1e6 * price[0] + output_tokens / 1e6 * price[1], 6)
