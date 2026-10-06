@@ -2,8 +2,10 @@
 manifest.py
 M13 v2 (D2.2): one manifest per synthesis run.
 
-Every run gets output/runs/<run_id>/ holding manifest.json and, when the engine
-returns one, raw_response.json (the full API message, thinking blocks included).
+Every run gets output/runs/<run_id>/ holding manifest.json, raw_response.json
+when the engine returns one (the full API message, thinking blocks included), and
+synthesis.json when the output validated (the run's own copy, so later runs of
+the same sample can't overwrite what prompt_compare scores).
 The manifest records everything needed to reproduce or audit the run: which
 bundle and template produced the prompt, which engine and model answered, the
 parameters sent, token usage and actual cost, timing, and the pipeline commit.
@@ -20,14 +22,15 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNS_DIR = REPO_ROOT / "output" / "runs"
 
-MANIFEST_VERSION = 1
+# v2 (D2.4): adds synthesis_path; each run keeps its own validated synthesis.json.
+MANIFEST_VERSION = 2
 
 REQUIRED_KEYS = (
     "manifest_version", "run_id", "mode", "status", "error",
     "sample_sha256", "bundle", "template", "prompt_sha256", "output_schema",
     "engine", "model", "params", "defaults_assumed", "usage", "cost",
     "response", "timing", "raw_response_path", "validation",
-    "analyst_notes_present", "pipeline",
+    "analyst_notes_present", "pipeline", "synthesis_path",
 )
 
 

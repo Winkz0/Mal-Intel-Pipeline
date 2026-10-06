@@ -65,6 +65,9 @@ def test_success_writes_run_dir_manifest_and_raw(setup):
     assert m["analyst_notes_present"] is True and res["analyst_notes"] == "note"
     assert m["validation"]["parsed_json"] is True
     assert (runs / res["manifest"]["run_id"] / "raw_response.json").exists()
+    saved = json.loads((runs / res["manifest"]["run_id"] / "synthesis.json").read_text())
+    assert saved["synthesis"] == res["synthesis"] and "raw_response" not in saved
+    assert m["synthesis_path"].endswith("synthesis.json") and m["manifest_version"] == 2
     assert res["manifest"]["run_id"].split("_")[1] == setup[2][:8]
 
 
@@ -136,6 +139,8 @@ def test_schema_invalid_output_is_rejected_and_recorded(setup):
     assert res["synthesis"] is None and "schema validation" in res["error"]
     m = load_manifest(res, setup[4])
     assert m["status"] == "error" and m["validation"]["parsed_json"] is True
+    assert m["synthesis_path"] is None
+    assert not (setup[4] / res["manifest"]["run_id"] / "synthesis.json").exists()
     assert m["validation"]["schema_valid"] is False
     assert any("iocs" in e for e in m["validation"]["errors"])
     assert any("classification" in e for e in m["validation"]["errors"])

@@ -170,6 +170,7 @@ def run_synthesis(
             yara_section["rule"] = validate_yara_strings(yara_section["rule"])
 
     manifest_path = run_dir / "manifest.json"
+    synthesis_path = run_dir / "synthesis.json" if synthesis is not None else None
     manifest = mf.build_manifest(
         run_id=run_id,
         mode=mode,
@@ -201,8 +202,8 @@ def run_synthesis(
         },
         analyst_notes_present=bool(analyst_notes),
         pipeline=mf.pipeline_commit(),
+        synthesis_path=mf.rel(synthesis_path) if synthesis_path else None,
     )
-    mf.write_json_atomic(manifest_path, manifest)
 
     result = {
         "schema_version": "1.0",
@@ -223,6 +224,11 @@ def run_synthesis(
         result["analyst_notes"] = analyst_notes
     if schema_report and not schema_report["valid"]:
         result["validation_errors"] = schema_report["errors"]
+
+    if synthesis_path is not None:
+        # The run's own copy (raw text lives in raw_response.json).
+        mf.write_json_atomic(synthesis_path, {k: v for k, v in result.items() if k != "raw_response"})
+    mf.write_json_atomic(manifest_path, manifest)
     if error:
         logger.error(f"Run {run_id} failed: {error}")
     return result
