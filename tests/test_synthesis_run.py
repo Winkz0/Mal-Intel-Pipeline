@@ -8,16 +8,9 @@ from pipeline.llm_synthesis.engines import EngineResult, get_engine
 from pipeline.llm_synthesis.pricing import estimate_cost
 from pipeline.llm_synthesis.prompt_builder import render
 from pipeline.llm_synthesis.synthesizer import parse_model_json, run_synthesis
-from tests.fixtures import rich_analysis
+from tests.fixtures import good_v1, good_v2, rich_analysis
 
-GOOD = {
-    "ttp_mapping": {"narrative": "n", "techniques": [{"id": "T1055"}], "confidence": "high", "reasoning": ""},
-    "yara_rule": {"rule": 'rule t {\n strings:\n  $a = "x"\n  $junk = "y"\n condition:\n  $a\n}',
-                  "confidence": "low", "reasoning": ""},
-    "sigma_rule": {"rule": "title: t", "log_sources": [], "confidence": "low", "reasoning": ""},
-    "technical_report": {"executive_summary": "s", "technical_summary": "", "key_indicators": [],
-                         "recommended_actions": []},
-}
+GOOD = good_v2()
 
 
 class FakeEngine:
@@ -63,7 +56,9 @@ def test_success_writes_run_dir_manifest_and_raw(setup):
     assert set(mf.REQUIRED_KEYS) <= set(m)
     assert m["status"] == "ok" and m["mode"] == "prod"
     assert m["bundle"]["sha256"] == setup[2] == res["bundle_sha256"]
-    assert m["template"] == {"id": "synthesis_v1", "sha256": setup[1].template_sha256}
+    assert m["template"] == {"id": "synthesis_v2", "sha256": setup[1].template_sha256}
+    assert m["output_schema"]["id"] == "synthesis_output.v2" and m["output_schema"]["constrained_decoding"] is False
+    assert m["validation"]["schema_valid"] is True and m["validation"]["errors"] == []
     assert m["prompt_sha256"] == setup[1].prompt_sha256
     assert m["usage"] == {"input_tokens": 1000, "output_tokens": 5000}
     assert m["cost"]["actual_usd"] == pytest.approx(1000 / 1e6 * 2 + 5000 / 1e6 * 10)
@@ -131,3 +126,41 @@ def test_pipeline_commit_never_raises(tmp_path):
 def test_build_manifest_requires_all_keys():
     with pytest.raises(ValueError, match="missing"):
         mf.build_manifest(run_id="x")
+
+
+def test_schema_invalid_output_is_rejected_and_recorded(setup):
+    bad = good_v2()
+    del bad["iocs"]
+    bad["verdict"]["classification"] = "probably bad"
+    res = run(setup, FakeEngine(json.dumps(bad)))
+    assert res["synthesis"] is None and "schema validation" in res["error"]
+    m = load_manifest(res, setup[4])
+    assert m["status"] == "error" and m["validation"]["parsed_json"] is True
+    assert m["validation"]["schema_valid"] is False
+    assert any("iocs" in e for e in m["validation"]["errors"])
+    assert any("classification" in e for e in m["validation"]["errors"])
+    assert res["validation_errors"] == m["validation"]["errors"]
+
+
+def test_normalization_recorded(setup):
+    out = good_v2()
+    out["verdict"]["confidence"] = "High"
+    out["ttp_mapping"]["techniques"][0]["id"] = " t1055 "
+    res = run(setup, FakeEngine(json.dumps(out)))
+    assert res["error"] is None
+    assert res["synthesis"]["verdict"]["confidence"] == "high"
+    assert res["synthesis"]["ttp_mapping"]["techniques"][0]["id"] == "T1055"
+    m = load_manifest(res, setup[4])
+    assert "verdict.confidence" in m["validation"]["normalized"]
+
+
+def test_v1_template_validates_against_v1_schema(tmp_path):
+    a = rich_analysis()
+    b = build_bundle(a)
+    bid, bpath = save_bundle(b, tmp_path / "bundles")
+    r = render(b, "synthesis_v1")
+    res = run_synthesis(a, r, bid, bpath, FakeEngine(json.dumps(good_v1())), estimate_cost(r.prompt),
+                        runs_dir=tmp_path / "runs")
+    assert res["error"] is None
+    m = json.loads((tmp_path / "runs" / res["manifest"]["run_id"] / "manifest.json").read_text())
+    assert m["output_schema"]["id"] == "synthesis_output.v1"

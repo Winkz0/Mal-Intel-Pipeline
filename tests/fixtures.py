@@ -128,3 +128,33 @@ def random_analysis(rng: random.Random) -> dict:
             if rng.random() < 0.1:
                 del section[k]
     return a
+
+
+def good_v2() -> dict:
+    """A schema-valid synthesis_output.v2 document (made-up content)."""
+    return {
+        "verdict": {"classification": "malicious", "family": "TestFamily", "confidence": "high"},
+        "ttp_mapping": {
+            "narrative": "n",
+            "techniques": [
+                {"id": "T1055", "name": "Process Injection", "tactic": "Defense Evasion", "evidence": "capa"},
+                {"id": "T1027.002", "name": "Software Packing", "tactic": "Defense Evasion", "evidence": "diec"},
+            ],
+            "confidence": "high",
+            "reasoning": "r",
+        },
+        "yara_rule": {"rule": 'rule t {\n strings:\n  $a = "x"\n  $junk = "y"\n condition:\n  $a\n}',
+                      "confidence": "medium", "reasoning": "r"},
+        "sigma_rule": {"rule": "title: t", "log_sources": ["sysmon"], "crowdstrike_notes": "",
+                       "splunk_notes": "", "confidence": "low", "reasoning": "r"},
+        "technical_report": {"executive_summary": "s", "technical_summary": "t",
+                             "key_indicators": ["198.51.100.7"], "recommended_actions": ["block"]},
+        "iocs": {"ips": ["198.51.100.7"], "domains": ["example.test"], "urls": [], "hashes": [], "commands": []},
+        "manipulation_observed": {"detected": False, "evidence": []},
+    }
+
+
+def good_v1() -> dict:
+    """The four legacy sections only (synthesis_output.v1)."""
+    d = good_v2()
+    return {k: d[k] for k in ("ttp_mapping", "yara_rule", "sigma_rule", "technical_report")}

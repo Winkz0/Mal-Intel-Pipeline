@@ -6,6 +6,7 @@ pytest==9.1.1
 
 # Same pin as requirements.txt: engine tests drive the real SDK over a mocked transport.
 anthropic==0.86.0
+jsonschema==4.26.0
 
 # YARA compile checks in tests/test_yara_fixup.py (skipped if absent).
 yara-python==4.5.4

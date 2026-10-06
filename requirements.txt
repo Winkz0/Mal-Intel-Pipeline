@@ -9,6 +9,9 @@ requests==2.32.5
 # LLM synthesis layer (Claude API)
 anthropic==0.86.0
 
+# Synthesis output validation (M13 v2)
+jsonschema==4.26.0
+
 # RAG assistant (vector store + retrieval)
 chromadb==1.5.8
 

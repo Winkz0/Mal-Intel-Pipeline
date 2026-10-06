@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "synthesis_output.v2",
+  "title": "Synthesis output for template synthesis_v2 (M13 v2 baseline)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "ttp_mapping",
+    "yara_rule",
+    "sigma_rule",
+    "technical_report",
+    "iocs",
+    "manipulation_observed"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classification",
+        "family",
+        "confidence"
+      ],
+      "properties": {
+        "classification": {
+          "enum": [
+            "malicious",
+            "suspicious",
+            "benign",
+            "unknown"
+          ]
+        },
+        "family": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "ttp_mapping": {
+      "type": "object",
+      "required": [
+        "narrative",
+        "techniques",
+        "confidence",
+        "reasoning"
+      ],
+      "properties": {
+        "narrative": {
+          "type": "string"
+        },
+        "techniques": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "tactic",
+              "evidence"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "tactic": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reasoning": {
+          "type": "string"
+        }
+      }
+    },
+    "yara_rule": {
+      "type": "object",
+      "required": [
+        "rule",
+        "confidence",
+        "reasoning"
+      ],
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reasoning": {
+          "type": "string"
+        }
+      }
+    },
+    "sigma_rule": {
+      "type": "object",
+      "required": [
+        "rule",
+        "log_sources",
+        "crowdstrike_notes",
+        "splunk_notes",
+        "confidence",
+        "reasoning"
+      ],
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "log_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "crowdstrike_notes": {
+          "type": "string"
+        },
+        "splunk_notes": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reasoning": {
+          "type": "string"
+        }
+      }
+    },
+    "technical_report": {
+      "type": "object",
+      "required": [
+        "executive_summary",
+        "technical_summary",
+        "key_indicators",
+        "recommended_actions"
+      ],
+      "properties": {
+        "executive_summary": {
+          "type": "string"
+        },
+        "technical_summary": {
+          "type": "string"
+        },
+        "key_indicators": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "iocs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ips",
+        "domains",
+        "urls",
+        "hashes",
+        "commands"
+      ],
+      "properties": {
+        "ips": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "urls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hashes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "manipulation_observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "detected",
+        "evidence"
+      ],
+      "properties": {
+        "detected": {
+          "type": "boolean"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

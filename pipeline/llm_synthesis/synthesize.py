@@ -90,6 +90,11 @@ def process_synthesis(sha256: str, engine_id: str, skip_checkpoint: bool, no_raw
 
     if result.get("error"):
         print(f"\n[!] Synthesis failed for {sha256[:16]}: {result['error']}")
+        errors = result.get("validation_errors") or []
+        for e in errors[:10]:
+            print(f"      - {e}")
+        if len(errors) > 10:
+            print(f"      ... {len(errors) - 10} more in the manifest")
         return False
 
     if no_raw:

@@ -3,7 +3,9 @@ synthesizer.py
 Runs one synthesis through an engine (engines/) and records it.
 
 run_synthesis(): engine call -> raw response + manifest in output/runs/<run_id>/
--> JSON parse -> YARA string fix-up -> report-compatible result dict.
+-> JSON parse -> schema validation (output_validation) -> YARA string fix-up
+-> report-compatible result dict. Output that fails validation is never returned
+as a synthesis, so nothing downstream writes it to output/reports.
 Engines never parse; this module never talks to an API directly.
 """
 
@@ -13,6 +15,7 @@ import re
 from pathlib import Path
 
 from pipeline.llm_synthesis import manifest as mf
+from pipeline.llm_synthesis.output_validation import schema_for_template, validate_output
 from pipeline.llm_synthesis.pricing import actual_cost
 
 logger = logging.getLogger(__name__)
@@ -146,13 +149,21 @@ def run_synthesis(
     if er.raw is not None:
         raw_path = mf.write_json_atomic(run_dir / "raw_response.json", er.raw)
 
+    schema_id = schema_for_template(rendered.template_id)
     error = er.error
     synthesis = None
+    parsed = None
+    schema_report = None
     if error is None:
         try:
-            synthesis = parse_model_json(er.text)
+            parsed = parse_model_json(er.text)
         except ValueError as e:
             error = f"Failed to parse model response as JSON: {e}"
+    if parsed is not None:
+        synthesis, schema_report = validate_output(parsed, schema_id)
+        if synthesis is None:
+            n = len(schema_report["errors"])
+            error = f"Output failed schema validation ({schema_id}): {n} error(s); see manifest"
     if synthesis is not None:
         yara_section = synthesis.get("yara_rule", {})
         if isinstance(yara_section, dict) and isinstance(yara_section.get("rule"), str):
@@ -168,7 +179,9 @@ def run_synthesis(
         bundle={"sha256": bundle_sha, "path": mf.rel(bundle_path)},
         template={"id": rendered.template_id, "sha256": rendered.template_sha256},
         prompt_sha256=rendered.prompt_sha256,
-        output_schema=None,  # D2.3
+        output_schema={"id": schema_id,
+                       "sha256": schema_report["schema_sha256"] if schema_report else None,
+                       "constrained_decoding": False},
         engine={"id": er.engine_id, "sdk": er.sdk},
         model={"requested": er.model_requested, "reported": er.model_reported},
         params=er.params,
@@ -180,7 +193,12 @@ def run_synthesis(
         timing={"started_at": started.isoformat(), "finished_at": finished.isoformat(),
                 "duration_ms": int((finished - started).total_seconds() * 1000)},
         raw_response_path=mf.rel(raw_path) if raw_path else None,
-        validation={"parsed_json": synthesis is not None, "schema": None},  # schema: D2.3
+        validation={
+            "parsed_json": parsed is not None,
+            "schema_valid": bool(schema_report and schema_report["valid"]),
+            "errors": schema_report["errors"] if schema_report else [],
+            "normalized": schema_report["normalized"] if schema_report else [],
+        },
         analyst_notes_present=bool(analyst_notes),
         pipeline=mf.pipeline_commit(),
     )
@@ -203,6 +221,8 @@ def run_synthesis(
     }
     if analyst_notes:
         result["analyst_notes"] = analyst_notes
+    if schema_report and not schema_report["valid"]:
+        result["validation_errors"] = schema_report["errors"]
     if error:
         logger.error(f"Run {run_id} failed: {error}")
     return result

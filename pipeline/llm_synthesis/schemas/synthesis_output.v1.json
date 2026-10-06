@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "synthesis_output.v1",
+  "title": "Synthesis output for template synthesis_v1 (pre-M13-v2 shape)",
+  "type": "object",
+  "required": [
+    "ttp_mapping",
+    "yara_rule",
+    "sigma_rule",
+    "technical_report"
+  ],
+  "properties": {
+    "ttp_mapping": {
+      "type": "object",
+      "required": [
+        "narrative",
+        "techniques",
+        "confidence",
+        "reasoning"
+      ],
+      "properties": {
+        "narrative": {
+          "type": "string"
+        },
+        "techniques": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "tactic",
+              "evidence"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "tactic": {
+                "type": "string"
+              },
+              "evidence": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reasoning": {
+          "type": "string"
+        }
+      }
+    },
+    "yara_rule": {
+      "type": "object",
+      "required": [
+        "rule",
+        "confidence",
+        "reasoning"
+      ],
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reasoning": {
+          "type": "string"
+        }
+      }
+    },
+    "sigma_rule": {
+      "type": "object",
+      "required": [
+        "rule",
+        "log_sources",
+        "crowdstrike_notes",
+        "splunk_notes",
+        "confidence",
+        "reasoning"
+      ],
+      "properties": {
+        "rule": {
+          "type": "string"
+        },
+        "log_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "crowdstrike_notes": {
+          "type": "string"
+        },
+        "splunk_notes": {
+          "type": "string"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        },
+        "reasoning": {
+          "type": "string"
+        }
+      }
+    },
+    "technical_report": {
+      "type": "object",
+      "required": [
+        "executive_summary",
+        "technical_summary",
+        "key_indicators",
+        "recommended_actions"
+      ],
+      "properties": {
+        "executive_summary": {
+          "type": "string"
+        },
+        "technical_summary": {
+          "type": "string"
+        },
+        "key_indicators": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "recommended_actions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "confidence": {
+      "enum": [
+        "high",
+        "medium",
+        "low"
+      ]
+    }
+  }
+}

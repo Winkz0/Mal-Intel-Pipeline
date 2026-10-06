@@ -10,7 +10,8 @@ was used.
 
 synthesis_v1 reproduces the pre-M13-v2 prompt byte for byte when the bundle is
 built with bundle.LEGACY_CAPS (see legacy_prompt.py and
-scripts/check_template_parity.py).
+scripts/check_template_parity.py). synthesis_v2 keeps v1's input section and
+adds output fields (verdict, iocs, manipulation_observed); it is the default.
 """
 
 import hashlib
@@ -21,7 +22,8 @@ from typing import NamedTuple
 from pipeline.llm_synthesis.bundle import LEGACY_CAPS, build_bundle
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
-DEFAULT_TEMPLATE = "synthesis_v1"
+# v1 is kept for parity checks only; v2 is the production and benchmark baseline.
+DEFAULT_TEMPLATE = "synthesis_v2"
 
 # Fail closed instead of sending (and retrying) an oversized prompt. With the
 # default caps a normal bundle renders to well under 50k characters.
@@ -113,6 +115,8 @@ def _notes_v1(b: dict) -> str:
 # template_id -> (field formatter, trailer)
 _FORMATTERS = {
     "synthesis_v1": (_fields_v1, _notes_v1),
+    # v2 = v1's input section verbatim + verdict/iocs/manipulation_observed output fields.
+    "synthesis_v2": (_fields_v1, _notes_v1),
 }
 
 
