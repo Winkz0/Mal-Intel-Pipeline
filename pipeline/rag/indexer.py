@@ -8,9 +8,7 @@ import logging
 import hashlib
 from pathlib import Path
 
-import chromadb
-from chromadb.utils import embedding_functions
-
+from pipeline.utils.run_context import require_side_effects
 from pipeline.rag.chunkers import (
     chunk_analysis,
     chunk_synthesis,
@@ -34,6 +32,9 @@ SIGMA_DIR = REPO_ROOT / "output" / "rules" / "sigma"
 
 def get_collection():
     """Initialize ChromaDB client and return the corpus collection."""
+    import chromadb  # lazy: keeps report/validate imports light
+    from chromadb.utils import embedding_functions
+
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
     client = chromadb.PersistentClient(path=str(CHROMA_DIR))
@@ -109,10 +110,12 @@ def index_corpus(force: bool = False) -> int:
     Index the full corpus into ChromaDB.
     force=True wipes and rebuilds; otherwise upserts (idempotent).
     """
+    require_side_effects("RAG reindex")
     collection = get_collection()
 
     if force:
         # Wipe existing data
+        import chromadb
         client = chromadb.PersistentClient(path=str(CHROMA_DIR))
         client.delete_collection(COLLECTION_NAME)
         collection = get_collection()

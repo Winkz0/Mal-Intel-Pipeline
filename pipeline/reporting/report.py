@@ -13,9 +13,6 @@ import json
 import logging
 import argparse
 from pathlib import Path
-from pipeline.rag.indexer import index_corpus
-from pipeline.delta_analysis.delta import generate_delta
-from pipeline.export.stix_export import export_stix
 import os
 
 # 1. RESOLVE PATH FIRST
@@ -94,50 +91,36 @@ def generate_reports(sha256: str) -> None:
     else:
         print("  [-] Sigma rule       : skipped (dry run or not generated)")
 
-    update_status(actual_sha256, 'REPORTED')
-    
-    # NEW: Update DB and Cleanup Storage
-    zip_path = REPO_ROOT / "samples" / "quarantine" / f"{actual_sha256}.zip"
-    meta_path = REPO_ROOT / "samples" / "quarantine" / f"{actual_sha256}.meta.json"
-    
-    if zip_path.exists():
-        try:
-            os.remove(zip_path)
-            print(f"  [+] Storage cleanup  : Removed {zip_path.name} to save disk space")
-        except Exception as e:
-            print(f"  [!] Storage cleanup  : Failed to remove {zip_path.name} ({e})")
-            
-    if meta_path.exists():
-        try:
-            os.remove(meta_path)
-            print(f"  [+] Storage cleanup  : Removed {meta_path.name}")
-        except Exception as e:
-            import traceback
-            print(f"  [!] Storage cleanup  : Failed to remove {meta_path.name} ({e})")
-            traceback.print_exec()
+    if synthesis.get("dry_run"):
+        # M13 v2 (D2.5): a dry run doesn't advance the DB or delete quarantine files.
+        print("  [~] Dry run          : DB status and quarantine files left unchanged")
+    else:
+        update_status(actual_sha256, 'REPORTED')
 
-        # Incremental RAG reindex — keeps vector store current
-    try:
-        count = index_corpus()
-        print(f"  [+] RAG reindex      : {count} chunks indexed")
-    except Exception as e:
-        print(f"  [!] RAG reindex      : Failed ({e})")
+        # Update DB and Cleanup Storage
+        zip_path = REPO_ROOT / "samples" / "quarantine" / f"{actual_sha256}.zip"
+        meta_path = REPO_ROOT / "samples" / "quarantine" / f"{actual_sha256}.meta.json"
 
-# Auto-run delta analysis against corpus
-    try:
-        generate_delta(actual_sha256)
-        print("  [+] Delta analysis   : Complete")
-    except Exception as e:
-        print(f"  [!] Delta analysis   : Failed ({e})")
-    
-    # STIX 2.1 export
-    try:
-        stix_path = export_stix(actual_sha256)
-        if stix_path:
-            print(f"  [+] STIX export      : {stix_path.name}")
-    except Exception as e:
-        print(f"  [!] STIX export      : Failed ({e})")
-   
+        if zip_path.exists():
+            try:
+                os.remove(zip_path)
+                print(f"  [+] Storage cleanup  : Removed {zip_path.name} to save disk space")
+            except Exception as e:
+                print(f"  [!] Storage cleanup  : Failed to remove {zip_path.name} ({e})")
+
+        if meta_path.exists():
+            try:
+                os.remove(meta_path)
+                print(f"  [+] Storage cleanup  : Removed {meta_path.name}")
+            except Exception as e:
+                import traceback
+                print(f"  [!] Storage cleanup  : Failed to remove {meta_path.name} ({e})")
+                traceback.print_exc()
+
+    # Delta, STIX and the RAG reindex now run after checkpoint #3 approval
+    # (rule_validation/validate.py -> reporting/publish.py), not here.
+    print("  [~] Delta, STIX, RAG : run after checkpoint #3 approval (validate)")
+
 
 def get_pending_reports() -> list[str]:
     return get_samples_by_status('SYNTHESIZED')

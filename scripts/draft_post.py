@@ -15,11 +15,14 @@ from datetime import date
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
+from pipeline.utils.run_context import require_side_effects
+
 REPORTS_DIR = REPO_ROOT / "output" / "reports"
 DOCS_DIR = REPO_ROOT / "docs" / "_posts"
 
 
 def draft_post(sha256: str) -> None:
+    require_side_effects("blog post draft")
     # Find synthesis
     syn_path = REPORTS_DIR / f"{sha256}.synthesis.json"
     if not syn_path.exists():

@@ -22,6 +22,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from pipeline.rule_validation.validate_yara import validate_yara_rule
 from pipeline.rule_validation.validate_sigma import validate_sigma_rule
+from pipeline.utils.run_context import require_side_effects
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,7 @@ def run_validation(sha256: str) -> dict:
         "overall_valid": False,
         "ready_for_production": False,
         "analyst_approved": False,
+        "published": False,
     }
 
     print(f"\n{'='*60}")
@@ -107,12 +109,21 @@ def run_validation(sha256: str) -> dict:
         else:
             print("  [!] Enter y, n, or s.")
 
+    # Post-approval steps (M13 v2, D2.5): delta, STIX and the RAG reindex run only
+    # once the analyst approves here, never before checkpoint #3.
+    if report["analyst_approved"]:
+        from pipeline.reporting.publish import publish_after_approval
+        report["published"] = publish_after_approval(sha256)
+    else:
+        print("  [~] Not approved: delta, STIX and RAG reindex skipped.")
+
     # Save validation report
     save_validation_report(report)
     return report
 
 
 def save_validation_report(report: dict) -> Path:
+    require_side_effects("validation report write")
     VALIDATION_DIR.mkdir(parents=True, exist_ok=True)
     sha256 = report["sha256"]
     out_path = VALIDATION_DIR / f"{sha256}.validation.json"

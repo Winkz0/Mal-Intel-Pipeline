@@ -17,6 +17,8 @@ from pathlib import Path
 from pipeline.llm_synthesis import manifest as mf
 from pipeline.llm_synthesis.output_validation import schema_for_template, validate_output
 from pipeline.llm_synthesis.pricing import actual_cost
+from pipeline.utils import run_context
+from pipeline.utils.run_context import require_side_effects
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +205,7 @@ def run_synthesis(
         analyst_notes_present=bool(analyst_notes),
         pipeline=mf.pipeline_commit(),
         synthesis_path=mf.rel(synthesis_path) if synthesis_path else None,
+        **({"eval_label": run_context.eval_label()} if mode == "eval" else {}),
     )
 
     result = {
@@ -210,6 +213,8 @@ def run_synthesis(
         "synthesized_at": finished.isoformat(),
         "model": er.model_reported or er.model_requested or engine.id,
         "dry_run": engine.id == "dry-run",
+        "engine": engine.id,
+        "mode": mode,
         "cost_estimate": cost_estimate,
         "sample": analysis.get("sample", {}),
         "synthesis": synthesis,
@@ -235,6 +240,7 @@ def run_synthesis(
 
 
 def save_synthesis(synthesis: dict) -> Path:
+    require_side_effects("synthesis report write")
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     sha256 = synthesis["sample"].get("sha256", "unknown")
     out_path = OUTPUT_DIR / f"{sha256}.synthesis.json"

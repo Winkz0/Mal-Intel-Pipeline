@@ -28,6 +28,8 @@ from stix2 import (
 )
 from stix2.exceptions import InvalidValueError
 
+from pipeline.utils.run_context import require_side_effects
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
@@ -298,6 +300,7 @@ def export_stix(sha256: str) -> Path | None:
     """
     Full export pipeline: load synthesis → build STIX objects → save bundle.
     """
+    require_side_effects("STIX export")
     print(f"\n{'='*60}")
     print(f"  STIX Export: {sha256[:32]}...")
     print(f"{'='*60}")

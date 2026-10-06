@@ -29,7 +29,7 @@ echo "============================================================"
 echo ""
 
 # Stage 1 — Synthesis
-echo "[1/4] Running LLM synthesis..."
+echo "[1/3] Running LLM synthesis..."
 python pipeline/llm_synthesis/synthesize.py "$SHA256" $EXTRA_ARGS
 if [ $? -ne 0 ]; then
     echo "[!] Synthesis failed — aborting pipeline"
@@ -38,18 +38,15 @@ fi
 
 # Stage 2 — Report generation
 echo ""
-echo "[2/4] Generating reports..."
+echo "[2/3] Generating reports..."
 python pipeline/reporting/report.py "$SHA256"
 
-# Stage 3 — Rule validation
+# Stage 3 — Rule validation (checkpoint #3). Approving here runs delta analysis,
+# STIX export and the RAG reindex (pipeline/reporting/publish.py); a separate
+# delta stage used to run it a second time.
 echo ""
-echo "[3/4] Validating rules..."
+echo "[3/3] Validating rules (checkpoint #3; approve to run delta, STIX, RAG reindex)..."
 python pipeline/rule_validation/validate.py "$SHA256"
-
-# Stage 4 — Delta analysis
-echo ""
-echo "[4/4] Running delta analysis..."
-python pipeline/delta_analysis/delta.py "$SHA256"
 
 echo ""
 echo "============================================================"

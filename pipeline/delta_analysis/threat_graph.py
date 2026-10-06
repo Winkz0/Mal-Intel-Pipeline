@@ -12,6 +12,8 @@ from pathlib import Path
 
 from pyvis.network import Network
 
+from pipeline.utils.run_context import require_side_effects
+
 logger = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -125,6 +127,7 @@ def render_graph(
     Render an interactive Pyvis network graph from the extracted data.
     Returns the path to the generated HTML file.
     """
+    require_side_effects("threat graph write")
     nodes = graph_data["nodes"]
     edges = graph_data["edges"]
 

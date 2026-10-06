@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from pipeline.delta_analysis.comparator import run_delta
+from pipeline.utils.run_context import require_side_effects
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ def render_delta_report(delta: dict) -> str:
 
 
 def generate_delta(sha256: str) -> None:
+    require_side_effects("delta report write")
     print(f"\n{'='*60}")
     print(f"  Running delta analysis: {sha256[:32]}...")
     print(f"{'='*60}")

@@ -57,6 +57,7 @@ def load_synthesis(path) -> tuple[dict, dict]:
         raise CompareInputError(f"{p}: {e}") from None
     if isinstance(doc, dict) and isinstance(doc.get("synthesis"), dict):
         fallback = {"run_id": (doc.get("manifest") or {}).get("run_id"), "model": doc.get("model"),
+                    "engine": doc.get("engine"),
                     "bundle_sha256": doc.get("bundle_sha256"),
                     "template": (doc.get("template") or {}).get("id")}
         for k, v in fallback.items():

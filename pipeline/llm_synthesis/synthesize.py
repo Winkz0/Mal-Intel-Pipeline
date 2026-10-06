@@ -8,9 +8,11 @@ Usage:
     python synthesize.py <sha256>                  # API engine, checkpoint #2
     python synthesize.py <sha256> --dry-run        # same as --engine dry-run
     python synthesize.py <sha256> --engine api --model claude-sonnet-5-5
+    python synthesize.py <sha256> --eval LABEL [--analysis PATH]   # side-effect-free
 """
 
 import sys
+import json
 import logging
 import argparse
 from pathlib import Path
@@ -29,6 +31,7 @@ from pipeline.llm_synthesis.pricing import estimate_cost
 from pipeline.llm_synthesis.prompt_builder import DEFAULT_TEMPLATE, PromptTooLarge, render
 from pipeline.llm_synthesis.synthesizer import load_analysis, run_synthesis, save_synthesis
 from pipeline.llm_synthesis.checkpoint2 import run_checkpoint2
+from pipeline.utils import run_context
 
 logger = logging.getLogger(__name__)
 
@@ -43,8 +46,19 @@ def build_model_input(analysis: dict, analyst_notes: str = ""):
 
 # 2. Core Logic
 def process_synthesis(sha256: str, engine_id: str, skip_checkpoint: bool, no_raw: bool,
-                      model: str = DEFAULT_MODEL):
-    analysis = load_analysis(sha256)
+                      model: str = DEFAULT_MODEL, analysis_path: Path = None):
+    """
+    Production by default. In eval mode (run_context.enter_eval) everything goes
+    under output/eval/<label>/{bundles,runs}: no reports, no DB, no index.
+    """
+    eval_label = run_context.eval_label()
+    if analysis_path is not None:
+        if not eval_label:
+            print("[!] --analysis is only allowed with --eval")
+            return False
+        analysis = json.loads(Path(analysis_path).read_text(encoding="utf-8"))
+    else:
+        analysis = load_analysis(sha256)
     if not analysis:
         print(f"[!] No analysis found for {sha256[:16]}...")
         return False
@@ -72,7 +86,12 @@ def process_synthesis(sha256: str, engine_id: str, skip_checkpoint: bool, no_raw
             print(f"[!] Cannot build model input for {sha256[:16]}: {e}")
             return False
 
-    bundle_sha, bundle_path = save_bundle(bundle, BUNDLE_DIR)
+    if eval_label:
+        eval_dir = run_context.eval_root(REPO_ROOT, eval_label)
+        bundle_dir, runs_dir, mode = eval_dir / "bundles", eval_dir / "runs", "eval"
+    else:
+        bundle_dir, runs_dir, mode = BUNDLE_DIR, None, "prod"
+    bundle_sha, bundle_path = save_bundle(bundle, bundle_dir)
     engine = get_engine(engine_id, model=model) if engine_id == "api" else get_engine(engine_id)
     print(f"  [*] Bundle   : {bundle_sha[:16]}... | template {rendered.template_id} "
           f"({rendered.template_sha256[:12]}) | engine {engine.id}")
@@ -85,6 +104,8 @@ def process_synthesis(sha256: str, engine_id: str, skip_checkpoint: bool, no_raw
         engine=engine,
         cost_estimate=cost,
         analyst_notes=analyst_notes,
+        runs_dir=runs_dir,
+        mode=mode,
     )
     print(f"  [*] Run      : {result['manifest']['path']}")
 
@@ -96,6 +117,11 @@ def process_synthesis(sha256: str, engine_id: str, skip_checkpoint: bool, no_raw
         if len(errors) > 10:
             print(f"      ... {len(errors) - 10} more in the manifest")
         return False
+
+    if eval_label:
+        # The run directory (manifest + synthesis.json) is the only output.
+        print(f"  [~] EVAL '{eval_label}' complete for {sha256[:16]}... (no reports, DB or index touched)")
+        return True
 
     if no_raw:
         result["raw_response"] = None
@@ -128,9 +154,24 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="Same as --engine dry-run")
     parser.add_argument("--skip-checkpoint", action="store_true", help="Skip checkpoint #2 review")
     parser.add_argument("--no-raw", action="store_true", help="Suppress raw_response in synthesis JSON (the run directory keeps the full response)")
+    parser.add_argument("--eval", metavar="LABEL", help="Side-effect-free eval run: output only under output/eval/LABEL/")
+    parser.add_argument("--analysis", type=Path, metavar="PATH", help="(eval only) read the analysis JSON from PATH")
     args = parser.parse_args()
 
     engine_id = "dry-run" if args.dry_run else args.engine
+
+    if args.eval:
+        if args.all:
+            print("[!] --eval runs one explicit sample; --all is not allowed.")
+            sys.exit(2)
+        try:
+            run_context.enter_eval(args.eval)
+        except ValueError as e:
+            print(f"[!] {e}")
+            sys.exit(2)
+    elif args.analysis:
+        print("[!] --analysis is only allowed with --eval.")
+        sys.exit(2)
 
     if args.all:
         # Every API call is approved individually (M13 v2 decision E-1): batch mode
@@ -159,5 +200,6 @@ if __name__ == "__main__":
                 print(f"  [!] Synthesis for {h[:16]} generated an exception: {exc}")
     else:
         # Non-zero exit so run_host_pipeline.sh stops instead of reporting on stale output.
-        ok = process_synthesis(args.sha256, engine_id, args.skip_checkpoint, args.no_raw, args.model)
+        ok = process_synthesis(args.sha256, engine_id, args.skip_checkpoint, args.no_raw, args.model,
+                               analysis_path=args.analysis)
         sys.exit(0 if ok else 1)

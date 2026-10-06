@@ -8,5 +8,8 @@ pytest==9.1.1
 anthropic==0.86.0
 jsonschema==4.26.0
 
+# Same pin as requirements.txt: the eval-isolation tests run synthesize.py end to end.
+python-dotenv==1.2.2
+
 # YARA compile checks in tests/test_yara_fixup.py (skipped if absent).
 yara-python==4.5.4

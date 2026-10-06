@@ -6,6 +6,8 @@ into standalone rule files for use with validation tools.
 
 from pathlib import Path
 
+from pipeline.utils.run_context import require_side_effects
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 YARA_DIR = REPO_ROOT / "output" / "rules" / "yara"
 SIGMA_DIR = REPO_ROOT / "output" / "rules" / "sigma"
@@ -13,6 +15,7 @@ SIGMA_DIR = REPO_ROOT / "output" / "rules" / "sigma"
 
 def extract_yara(synthesis: dict) -> tuple[str, Path] | tuple[None, None]:
     """Extract YARA rule and write to output/rules/yara/<sha256>.yar"""
+    require_side_effects("YARA rule write")
     sha256 = synthesis.get("sample", {}).get("sha256", "unknown")
     rule = synthesis.get("synthesis", {}).get("yara_rule", {}).get("rule", "")
 
@@ -31,6 +34,7 @@ def extract_yara(synthesis: dict) -> tuple[str, Path] | tuple[None, None]:
 
 def extract_sigma(synthesis: dict) -> tuple[str, Path] | tuple[None, None]:
     """Extract Sigma rule and write to output/rules/sigma/<sha256>.yml"""
+    require_side_effects("Sigma rule write")
     sha256 = synthesis.get("sample", {}).get("sha256", "unknown")
     rule = synthesis.get("synthesis", {}).get("sigma_rule", {}).get("rule", "")
 

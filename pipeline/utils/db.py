@@ -2,8 +2,15 @@ import sqlite3
 import datetime
 from pathlib import Path
 
+from pipeline.utils.run_context import require_side_effects
+
 # Adjust path as necessary to sit at the root of your pipeline
 DB_PATH = Path(__file__).parent.parent.parent / "pipeline.db"
+
+# M13 v2 (D2.5): the schema is ensured on first connection instead of at import,
+# so importing this module never creates or alters pipeline.db.
+_initialized = False
+
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -27,11 +34,21 @@ def init_db():
     conn.commit()
     conn.close()
 
+
+def _connect():
+    global _initialized
+    if not _initialized:
+        init_db()
+        _initialized = True
+    return sqlite3.connect(DB_PATH)
+
+
 def update_status(sha256: str, status: str, family: str = "Unknown"):
-    conn = sqlite3.connect(DB_PATH)
+    require_side_effects(f"DB status update ({status})")
+    conn = _connect()
     cursor = conn.cursor()
     now = datetime.datetime.now().isoformat()
-    
+
     if status == 'ACQUIRED':
         cursor.execute('''
             INSERT OR REPLACE INTO samples (sha256, family, status, acquired_at)
@@ -43,12 +60,12 @@ def update_status(sha256: str, status: str, family: str = "Unknown"):
         cursor.execute(f'''
             UPDATE samples SET status = ?, {time_col} = ? WHERE sha256 = ?
         ''', (status, now, sha256))
-        
+
     conn.commit()
     conn.close()
 
 def get_samples_by_status(status: str) -> list[str]:
-    conn = sqlite3.connect(DB_PATH)
+    conn = _connect()
     cursor = conn.cursor()
     cursor.execute('SELECT sha256 FROM samples WHERE status = ?', (status,))
     results = [row[0] for row in cursor.fetchall()]
@@ -57,7 +74,8 @@ def get_samples_by_status(status: str) -> list[str]:
 
 # NEW: Update scoring function
 def update_triage_score(sha256: str, score: int, needs_dynamic: bool):
-    conn = sqlite3.connect(DB_PATH)
+    require_side_effects("DB triage score update")
+    conn = _connect()
     cursor = conn.cursor()
     cursor.execute('''
         UPDATE samples SET triage_score = ?, needs_dynamic = ? WHERE sha256 = ?
@@ -65,8 +83,7 @@ def update_triage_score(sha256: str, score: int, needs_dynamic: bool):
     conn.commit()
     conn.close()
 
-# NEW: Automatically initialize tables whenever any pipeline script imports this module
-init_db()
 
 if __name__ == "__main__":
+    init_db()
     print("[+] Pipeline state database initialized manually.")
