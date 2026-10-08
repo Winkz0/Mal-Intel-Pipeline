@@ -9,14 +9,17 @@ roll REMnux back and power-cycle it; it cannot change REMnux's config
 (including its network) or touch any other VM.
 
 Config is read from config/secrets.env, the same file the rest of the
-pipeline uses. Only PVE_TOKEN_SECRET is required; the rest have defaults:
+pipeline uses. These four are required; the script stops if any is missing:
 
     PVE_TOKEN_SECRET=<token value>
-    PVE_TOKEN_ID=remnux-revert@pve!pipeline
     PVE_API_URL=https://<pve-host>:8006/api2/json
-    PVE_CA_PATH=~/.config/pve/pve-root-ca.pem
     PVE_NODE=<pve-node>
     REMNUX_VMID=<vmid>
+
+The rest have defaults:
+
+    PVE_TOKEN_ID=remnux-revert@pve!pipeline
+    PVE_CA_PATH=~/.config/pve/pve-root-ca.pem
     REMNUX_SNAPSHOT=clean-baseline
     REMNUX_SSH_HOST=remnux
     REMNUX_REPO=/home/remnux/Mal-Intel-Pipeline
@@ -54,12 +57,12 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(REPO_ROOT / "config" / "secrets.env")
 
-API_URL = os.getenv("PVE_API_URL", "https://<pve-host>:8006/api2/json").rstrip("/")
+API_URL = os.getenv("PVE_API_URL", "").rstrip("/")
 CA_PATH = Path(os.path.expanduser(os.getenv("PVE_CA_PATH", "~/.config/pve/pve-root-ca.pem")))
 TOKEN_ID = os.getenv("PVE_TOKEN_ID", "remnux-revert@pve!pipeline")
 TOKEN_SECRET = os.getenv("PVE_TOKEN_SECRET", "")
-NODE = os.getenv("PVE_NODE", "<pve-node>")
-VMID = os.getenv("REMNUX_VMID", "<vmid>")
+NODE = os.getenv("PVE_NODE", "")
+VMID = os.getenv("REMNUX_VMID", "")
 SNAPSHOT = os.getenv("REMNUX_SNAPSHOT", "clean-baseline")
 SSH_HOST = os.getenv("REMNUX_SSH_HOST", "remnux")
 REMNUX_REPO = os.getenv("REMNUX_REPO", "/home/remnux/Mal-Intel-Pipeline")
@@ -76,10 +79,21 @@ class RevertError(RuntimeError):
 
 # --- Proxmox API -------------------------------------------------------------
 
+def _require_settings() -> None:
+    """Host, node and VMID have no defaults, so homelab addresses stay out of the repo."""
+    missing = [name for name, value in (("PVE_TOKEN_SECRET", TOKEN_SECRET), ("PVE_API_URL", API_URL),
+                                        ("PVE_NODE", NODE), ("REMNUX_VMID", VMID)) if not value]
+    if missing:
+        raise RevertError(f"not set in config/secrets.env: {', '.join(missing)}")
+    if not API_URL.startswith("https://"):
+        raise RevertError("PVE_API_URL must be an https:// URL")
+    if not VMID.isdigit():
+        raise RevertError("REMNUX_VMID must be a number")
+
+
 def _context() -> ssl.SSLContext:
     """TLS context pinned to the node's own CA; verification stays on."""
-    if not TOKEN_SECRET:
-        raise RevertError("PVE_TOKEN_SECRET is not set (config/secrets.env)")
+    _require_settings()
     if not CA_PATH.is_file():
         raise RevertError(f"CA file not found: {CA_PATH}")
     return ssl.create_default_context(cafile=str(CA_PATH))
